@@ -1,0 +1,16 @@
+{
+    "rust-analyzer.imports.granularity.enforce": true,
+    "rust-analyzer.imports.group.enable": false,
+    "rust-analyzer.imports.merge.glob": false,
+    "rust-analyzer.completion.autoimport.enable": true,
+    "rust-analyzer.imports.granularity.group": "item",
+    "rust-analyzer.imports.prefer.no.std": false,
+    "rust-analyzer.imports.prefix": "crate",
+    "rust-analyzer.references.excludeImports": false,
+    "rust-analyzer.assist.importGranularity": "item",
+    "rust-analyzer.assist.allowMergingIntoGlobImports": false,
+    "rust-analyzer.assist.importPrefix": "crate",
+    "rust-analyzer.diagnostics.disabled": [
+        "unresolved-macro-call"
+    ]
+}
