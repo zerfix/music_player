@@ -1,11 +1,12 @@
 use audiotags::AudioTag;
 use audiotags::Tag;
-use crate::functions::functions_hash::hash;
-use crate::traits::trait_listable::Listable;
 use std::cmp::Ordering;
 use std::hash::Hash;
 use std::path::PathBuf;
 use tui::widgets::ListItem;
+use crate::functions::functions_hash::hash;
+use crate::traits::trait_listable::Listable;
+use crate::ui::utils::ui_text_util::term_text_line;
 
 //-////////////////////////////////////////////////////////////////////////////
 //  Raw Entry
@@ -13,36 +14,46 @@ use tui::widgets::ListItem;
 #[derive(Clone)]
 #[derive(Debug)]
 pub struct TrackFile {
-    pub id_artist  : u64,
-    pub id_album   : u64,
-    pub id_track   : u64,
-    pub path       : PathBuf,
-    pub artist     : Option<String>,
-    pub album_title: Option<String>,
-    pub disc       : Option<u16>,
-    pub track      : Option<u16>,
-    pub title      : Option<String>,
-    pub duration   : Option<f64>,
-    pub year       : Option<i32>,
+    /// for treating element as a album header in library view
+    pub is_album_padding: bool,
+    pub id_artist   : u64,
+    pub id_album    : u64,
+    pub id_track    : u64,
+    pub path        : PathBuf,
+    pub album_artist: Option<String>,
+    pub album_title : Option<String>,
+    /// only for when it differs from album_artist
+    pub track_artist: Option<String>,
+    pub disc        : Option<u16>,
+    pub track       : Option<u16>,
+    pub track_title : Option<String>,
+    pub duration    : Option<f64>,
+    pub year        : Option<i32>,
 }
 
 impl TrackFile {
     pub fn new(path: PathBuf, tag: Box<dyn AudioTag>) -> TrackFile {
-        let artist      = tag.artist().map(|a| a.to_string());
-        let album_title = tag.album_title().map(|at| at.to_string());
-        let disc        = tag.disc_number();
-        let track       = tag.track_number();
-        let title       = tag.title().map(|t| t.to_string());
-        let duration    = tag.duration();
-        let year        = tag.year();
+        let album_artist = tag.album_artist().filter(|a| !a.is_empty());
+        let track_artist = tag.artist()      .filter(|a| !a.is_empty());
+        let album_title  = tag.album_title() .filter(|a| !a.is_empty());
+        let track_title  = tag.title()       .filter(|a| !a.is_empty());
+
+        let album_artist = album_artist.or(track_artist).map(|a| a.to_string());
+        let track_artist = track_artist.filter(|a| Some(*a) != album_artist.as_deref()).map(|a| a.to_string());
+        let album_title  = album_title.map(|at| at.to_string());
+        let disc         = tag.disc_number();
+        let track        = tag.track_number();
+        let track_title  = track_title.map(|t| t.to_string());
+        let duration     = tag.duration();
+        let year         = tag.year();
 
         let id_artist = {
-            let artist = artist.clone().unwrap_or_default().to_lowercase();
+            let artist = album_artist.clone().unwrap_or_default().to_lowercase();
             hash(artist.as_bytes())
         };
 
         let id_album = {
-            let artist      = artist.clone().unwrap_or_default().to_lowercase();
+            let artist      = album_artist.clone().unwrap_or_default().to_lowercase();
             let album_title = album_title.clone().unwrap_or_default().to_lowercase();
             hash(format!("{}{}", artist, album_title).as_bytes())
         };
@@ -50,12 +61,14 @@ impl TrackFile {
         let id_track = hash(path.to_str().unwrap().to_lowercase().as_bytes());
 
         TrackFile{
+            is_album_padding: false,
             path,
-            artist,
+            album_artist,
             album_title,
             disc,
             track,
-            title,
+            track_artist,
+            track_title,
             duration,
             year,
             id_artist,
@@ -70,8 +83,39 @@ impl TrackFile {
             Err(_) => None,
         }
     }
+
+    pub fn to_track_entry(&self) -> LibraryTrackEntry {
+        match self.is_album_padding {
+            true => LibraryTrackEntry::Album(LibraryAlbumEntryData{
+                id  : self.id_album,
+                name: self.album_title.clone().unwrap_or("<missing>".to_string()),
+                year: self.year,
+            }),
+            false => LibraryTrackEntry::Track(LibraryTrackEntryData{
+                year        : self.year,
+                album_artist: self.album_artist.clone(),
+                album_name  : self.album_title.clone().unwrap_or("<missing>".to_string()),
+                id          : self.id_track,
+                disc        : self.disc,
+                track       : self.track,
+                track_artist: self.track_artist.clone(),
+                track_name  : self.track_title.clone().unwrap_or(self.path.to_str().unwrap_or("<missing>").to_string()),
+                duration    : self.duration,
+                path        : self.path.clone(),
+            })
+        }
+    }
 }
 
+impl Listable for TrackFile {
+    fn to_list_item<'a>(self, _width: usize) -> ListItem<'a>{
+        todo!()
+    }
+
+    fn is_selectable(&self) -> bool {
+        !self.is_album_padding
+    }
+}
 
 impl PartialOrd for TrackFile {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -79,11 +123,13 @@ impl PartialOrd for TrackFile {
             self.year,
             &self.album_title,
             self.disc,
+            !self.is_album_padding,
             self.track,
         ).cmp(&(
             other.year,
             &other.album_title,
             other.disc,
+            !other.is_album_padding,
             other.track,
         )))
     }
@@ -116,16 +162,22 @@ impl Hash for TrackFile {
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub enum LibraryFilterEntry {
     All,
-    Artist{name: String},
-    Year{year: i32},
+    Artist{name: Option<String>},
+    Year{year: Option<i32>},
 }
 
 impl LibraryFilterEntry {
     pub fn name(&self) -> String {
         match self {
-            LibraryFilterEntry::All => "all".to_string(),
-            LibraryFilterEntry::Artist { name } => name.clone(),
-            LibraryFilterEntry::Year { year } => year.to_string(),
+            LibraryFilterEntry::All => "ALL".to_string(),
+            LibraryFilterEntry::Artist { name } => match name {
+                Some(name) => name.clone(),
+                None       => "<missing>".to_string(),
+            },
+            LibraryFilterEntry::Year { year } => match year {
+                Some(year) => year.to_string(),
+                None       => "----".to_string(),
+            },
         }
     }
 }
@@ -135,8 +187,8 @@ impl Listable for LibraryFilterEntry {
         true
     }
 
-    fn to_list_item(&self, _width: usize) -> tui::widgets::ListItem {
-        ListItem::new(self.name())
+    fn to_list_item<'a>(self, width: usize) -> tui::widgets::ListItem<'a> {
+        ListItem::new(term_text_line(" ", self.name(), " ", width))
     }
 }
 
@@ -148,7 +200,7 @@ impl Listable for LibraryFilterEntry {
 #[derive(PartialEq, Eq)]
 pub enum LibraryTrackEntry {
     Album(LibraryAlbumEntryData),
-    Track(LibraryTrackEntryData)
+    Track(LibraryTrackEntryData),
 }
 
 impl LibraryTrackEntry {
@@ -217,7 +269,7 @@ impl Listable for LibraryTrackEntry {
         }
     }
 
-    fn to_list_item(&self, width: usize) -> ListItem {
+    fn to_list_item<'a>(self, width: usize) -> ListItem<'a> {
         ListItem::new(self.render(width))
     }
 }
@@ -255,9 +307,11 @@ impl Eq for LibraryAlbumEntryData {}
 pub struct LibraryTrackEntryData {
     pub id: u64,
     pub disc: Option<u16>,
+    pub album_artist: Option<String>,
     pub album_name: String,
     pub track: Option<u16>,
-    pub name: Option<String>,
+    pub track_artist: Option<String>,
+    pub track_name: String,
     pub year: Option<i32>,
     pub duration: Option<f64>,
     pub path: PathBuf,
@@ -272,11 +326,13 @@ impl Ord for LibraryTrackEntryData {
 impl PartialOrd for LibraryTrackEntryData {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some((
+            &self.album_artist,
             self.year,
             &self.album_name,
             self.disc,
             self.track,
         ).cmp(&(
+            &other.album_artist,
             other.year,
             &other.album_name,
             other.disc,
@@ -294,60 +350,41 @@ impl PartialEq for LibraryTrackEntryData {
 impl Eq for LibraryTrackEntryData { }
 
 impl LibraryTrackEntry {
-    pub fn album_from_track(track: &TrackFile) -> LibraryTrackEntry {
-        LibraryTrackEntry::Album(LibraryAlbumEntryData{
-            id  : track.id_album,
-            name: track.album_title.clone().unwrap_or("".to_string()),
-            year: track.year,
-        })
-    }
-
-    pub fn track_from_track(track: &TrackFile) -> LibraryTrackEntry {
-        LibraryTrackEntry::Track(LibraryTrackEntryData{
-            year      : track.year,
-            album_name: track.album_title.clone().unwrap_or_default(),
-            id        : track.id_track,
-            disc      : track.disc,
-            track     : track.track,
-            name      : track.title.clone(),
-            duration  : track.duration,
-            path      : track.path.clone(),
-        })
-    }
-
     pub fn render(&self, width: usize) -> String {
         match self {
             LibraryTrackEntry::Album(album) => {
-                let name = album.name.clone();
-                let year = match album.year {
-                    Some(year) => year.to_string(),
-                    None => "----".to_string(),
-                };
-                let padding: String =  vec![' '; width.saturating_sub(1 + name.chars().count() + year.chars().count())].into_iter().collect();
-                format!(" {}{}{}", name, padding, year)
+                let year_str = album.year.map(|y| y.to_string()).unwrap_or("----".to_string());
+                let year = format!(" {} ", year_str);
+
+                term_text_line(" ", album.name.clone(), &year, width)
             },
             LibraryTrackEntry::Track(track) => {
-                let name = match &track.name {
-                    Some(name) => name.clone(),
-                    None => "<no name>".to_string(),
-                };
+                let num = format!("  {:02} ", track.track.unwrap_or(0));
+                let name = track.track_name.clone();
                 let duration = match track.duration {
                     Some(dur) => {
                         let dur = dur.round() as usize;
-                        let seconds = dur % 60;
-                        let minutes = dur / 60;
-                        format!("{:02}:{:02}", minutes, seconds)
+                        let seperate = |time: usize| (time % 60, time / 60);
+                        match dur {
+                            ..=3599 => {
+                                let (seconds, minutes) = seperate(dur);
+                                format!(" {:02}:{:02}  ", minutes, seconds)
+                            },
+                            3600.. => {
+                                let (seconds, minutes) = seperate(dur);
+                                let (minutes, hours  ) = seperate(minutes);
+                                format!(" {:02}:{:02}:{:02}  ", hours, minutes, seconds)
+                            },
+                        }
                     },
-                    None => "--:--".to_string(),
+                    None => " --:--  ".to_string(),
                 };
-                let track = format!("{:02}", track.track.unwrap_or(0));
-                let padding: String =  vec![' '; width.saturating_sub(3 + name.chars().count() + duration.chars().count() + track.chars().count())].into_iter().collect();
-                format!("  {} {}{}{}", track, name, padding, duration)
+
+                term_text_line(&num, name, &duration, width)
             },
         }
     }
 }
-
 
 //-////////////////////////////////////////////////////////////////////////////
 //

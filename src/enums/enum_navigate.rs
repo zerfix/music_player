@@ -8,6 +8,7 @@ pub enum Navigate {
     Down,
     Left,
     Right,
+    Enter,
     PgUp,
     PgDown,
     Home,

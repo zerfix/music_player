@@ -1,27 +1,25 @@
-use crate::traits::trait_listable::Listable;
 use std::fmt::Debug;
-use tui::backend::Backend;
-use tui::Frame;
-use tui::layout::Rect;
-use tui::style::Color;
-use tui::style::Style;
-use tui::widgets::List;
-use tui::widgets::ListItem;
+use crate::traits::trait_listable::Listable;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
 //-////////////////////////////////////////////////////////////////////////////
+const PADDING: usize = 2;
+
 #[derive(Clone)]
 #[derive(Debug)]
+#[derive(PartialEq, Eq)]
 pub struct SortedListState<T: Clone + Debug + Eq + Ord + Listable> {
+    unique: bool,
     selected: usize,
     scroll_anchor: usize,
     entries: Vec<T>,
 }
 
 impl<'a, T: Clone + Debug + Eq + Ord + Listable> SortedListState<T> {
-    pub fn new() -> Self {
+    pub fn new(unique: bool) -> Self {
         SortedListState{
+            unique,
             scroll_anchor: 0,
             selected: 0,
             entries: vec![],
@@ -30,25 +28,16 @@ impl<'a, T: Clone + Debug + Eq + Ord + Listable> SortedListState<T> {
 
     // get state ----------------------------------------------------
 
-    pub fn selected_index(&self) -> Option<usize> {
-        self.entries.get(self.selected)
-            .and_then(|e| match e.is_selectable() {
-                true => Some(self.selected),
-                false => None,
-            })
+    pub fn selected_index(&self) -> usize {
+        self.selected
     }
+
     pub fn selected_entry(&'a self) -> Option<&'a T> {
         self.entries.get(self.selected)
-        .and_then(|e| match e.is_selectable() {
-            true => Some(e),
-            false => None,
-        })
     }
-    pub fn selectable(&'a self) -> (Option<usize>, &'a Vec<T>) {
-        (
-            self.selected_index(),
-            &self.entries,
-        )
+
+    pub fn entries(&self) -> &Vec<T> {
+        &self.entries
     }
 
     // -- selection -------------------------------------------------
@@ -101,78 +90,235 @@ impl<'a, T: Clone + Debug + Eq + Ord + Listable> SortedListState<T> {
     // -- insert ----------------------------------------------------
 
     pub fn add(&mut self, element: T) {
-        if let Err(index) = self.entries.binary_search(&element) {
+        if let Some(index) = match self.entries.binary_search(&element) {
+            Ok (index) => if self.unique {None} else {Some(index)},
+            Err(index) => Some(index),
+        } {
+            let first_selectable = self.entries.iter()
+                .enumerate()
+                .find_map(|(i,e)| if e.is_selectable() {Some(i)} else {None})
+                .unwrap_or(usize::MAX);
             self.entries.insert(index, element);
-            if index <= self.selected {
-                self.scroll_anchor += 1;
-                self.selected += 1;
-            }
-
-            if self.selected_entry().is_none() {
-                self.select_start()
+            if first_selectable >= index {
+                self.select_start();
+            } else {
+                if index <= self.selected {
+                    self.scroll_anchor += 1;
+                    self.selected += 1;
+                }
             }
         }
     }
 
-    pub fn replace_all(&mut self, elements: impl Iterator<Item = T>) {
-        self.entries = vec![];
-        for element in elements {
-            if let Err(index) = self.entries.binary_search(&element) {
-                self.entries.insert(index, element);
-            }
-        }
-        if self.selected >= self.entries.len() {
-            self.select_end()
-        }
-        if self.selected_entry().is_none() {
-            self.select_next(1);
-        }
+    pub fn replace_all(&mut self, elements: Vec<T>) {
+        self.entries = elements;
+        self.select_start();
+        self.scroll_anchor = 0;
     }
 
     // -- render ----------------------------------------------------
 
-    /// `update_scroll` should be run before `render`
-    pub fn render<B: Backend>(&self, frame: &mut Frame<B>, area: Rect, is_active: bool) {
-        // todo: do style globally somewhere else
-        let selected_style = match is_active {
-            true => Style::default()
-                .fg(Color::White)
-                .bg(Color::Red),
-            false => Style::default()
-                .fg(Color::White)
-                .bg(Color::DarkGray),
-        };
+    /// will only output correct data if update_scroll
+    pub fn view(&mut self, term_height: usize) -> (Vec<T>, usize) {
+        self.update_scroll(term_height);
 
-        let elements = self.entries.iter()
-            .map(|element| element.to_list_item(area.width as usize))
-            .enumerate()
-            .map(|(i, element)| match i == self.selected {
-                true => element.style(selected_style),
-                false => element,
-            })
+        let viewable_elements = self.entries.iter()
             .skip(self.scroll_anchor)
-            .take(area.height as usize)
-            .collect::<Vec<ListItem>>();
+            .take(term_height)
+            .cloned()
+            .collect::<Vec<T>>();
+        let selected = self.selected.saturating_sub(self.scroll_anchor);
 
-        frame.render_widget(List::new(elements), area);
+        (
+            viewable_elements,
+            selected,
+        )
     }
 
-    pub fn update_scroll(&mut self, render_height: usize) {
-        let padding = 2;
+    fn update_scroll(&mut self, render_height: usize) {
+        // min/max possible
+        let list_bot = self.entries.len().saturating_sub(1);
+        let anchor_max = list_bot.saturating_sub(render_height.saturating_sub(1));
 
-        // calculate bounds
-        let max_anchor_dept = self.entries.len().saturating_sub(render_height);
-        let window_top = self.scroll_anchor.saturating_add(padding);
-        let window_bot = self.scroll_anchor.saturating_add(render_height.saturating_sub(padding+1));
+        // min/max visible
+        let window_top = self.scroll_anchor;
+        let window_bot = self.scroll_anchor + render_height.saturating_sub(1);
 
-        // adjust view
-        if self.selected < window_top {self.scroll_anchor = self.selected.saturating_sub(padding)}
-        if self.selected > window_bot {self.scroll_anchor = self.selected.saturating_add(padding+1).saturating_sub(render_height)}
+        // min/max selected thresholds
+        let selected_top = window_top + PADDING;
+        let selected_bot = window_bot.saturating_sub(PADDING);
 
-        // avoid over scroll
-        self.scroll_anchor = self.scroll_anchor.min(max_anchor_dept);
+        // min/max new positions for scroll_anchor when selection hits top/bot thresholds
+        let new_top = (self.selected).saturating_sub(PADDING);
+        let new_bot = (self.selected + PADDING + 1).saturating_sub(render_height);
+
+        // dbg!(self.selected);
+        // dbg!(self.scroll_anchor);
+        // dbg!(list_bot);
+        // dbg!(anchor_max);
+        // dbg!(window_top);
+        // dbg!(window_bot);
+        // dbg!(selected_top);
+        // dbg!(selected_bot);
+        // dbg!(new_top);
+        // dbg!(new_bot);
+
+        if self.selected < selected_top {self.scroll_anchor = new_top                }
+        if self.selected > selected_bot {self.scroll_anchor = new_bot.min(anchor_max)}
     }
 }
+//-////////////////////////////////////////////////////////////////////////////
+//
+//-////////////////////////////////////////////////////////////////////////////
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[derive(Clone, Copy)]
+    #[derive(Debug)]
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    struct DummyElement{
+        selectable: bool,
+    }
+    impl DummyElement {
+        pub fn new(selectable: bool) -> DummyElement {
+            DummyElement{
+                selectable,
+            }
+        }
+    }
+    impl Listable for DummyElement {
+        fn to_list_item<'a>(self, _width: usize) -> tui::widgets::ListItem<'a> {
+            todo!()
+        }
+        fn is_selectable(&self) -> bool {
+            self.selectable
+        }
+    }
+
+    #[test]
+    fn test_sorted_list_scroll_down() {
+        let term_height = 10;
+        let mut state = SortedListState{
+            unique       : false,
+            selected     : 0,
+            scroll_anchor: 0,
+            entries      : vec![DummyElement::new(true); 30],
+        };
+
+        for i in 0..29 {
+            let i = i+1;
+            println!("selected: {}", i);
+
+            state.select_next(1);
+            state.update_scroll(term_height);
+
+            assert_eq!(state, SortedListState{
+                unique       : false,
+                selected     :  i,
+                scroll_anchor: (i+1).saturating_sub(term_height-PADDING).min(30-term_height),
+                entries      : vec![DummyElement::new(true); 30],
+            });
+        }
+    }
+
+    #[test]
+    fn test_sorted_list_scroll_up() {
+        let term_height = 10;
+        let mut state = SortedListState{
+            unique       : false,
+            selected     : 29,
+            scroll_anchor: 29 - term_height,
+            entries      : vec![DummyElement::new(true); 30],
+        };
+
+        for i in 0..29 {
+            let i = 29 - 1 - i;
+            println!("selected: {}", i);
+
+            state.select_prev(1);
+            state.update_scroll(term_height);
+
+            assert_eq!(state, SortedListState{
+                unique       : false,
+                selected     : i,
+                scroll_anchor: i.saturating_sub(PADDING).min(30-term_height),
+                entries      : vec![DummyElement::new(true); 30],
+            });
+        }
+    }
+
+    #[test]
+    fn test_sorted_list_scroll_past_selectable() {
+        let mut state = SortedListState{
+            unique       : false,
+            selected     : 0,
+            scroll_anchor: 0,
+            entries      : vec![
+                DummyElement::new(true ),
+                DummyElement::new(false),
+                DummyElement::new(true ),
+            ],
+        };
+
+        state.select_next(1);
+        assert_eq!(state, SortedListState{
+            unique       : false,
+            selected     : 2,
+            scroll_anchor: 0,
+            entries      : vec![
+                DummyElement::new(true ),
+                DummyElement::new(false),
+                DummyElement::new(true ),
+            ],
+        });
+
+        state.select_prev(1);
+        assert_eq!(state, SortedListState{
+            unique       : false,
+            selected     : 0,
+            scroll_anchor: 0,
+            entries      : vec![
+                DummyElement::new(true ),
+                DummyElement::new(false),
+                DummyElement::new(true ),
+            ],
+        });
+    }
+
+    #[test]
+    fn test_sorted_list_add_element() {
+        let mut state: SortedListState<DummyElement> = SortedListState{
+            unique       : false,
+            selected     : 0,
+            scroll_anchor: 0,
+            entries      : vec![],
+        };
+
+        state.add(DummyElement::new(false));
+        state.add(DummyElement::new(true ));
+        state.add(DummyElement::new(true ));
+        state.add(DummyElement::new(true ));
+
+
+        assert_eq!(state, SortedListState{
+            unique       : false,
+            selected     : 1,
+            scroll_anchor: 0,
+            entries      : vec![
+                DummyElement::new(false),
+                DummyElement::new(true ),
+                DummyElement::new(true ),
+                DummyElement::new(true ),
+            ],
+        });
+
+
+    }
+}
+
 //-////////////////////////////////////////////////////////////////////////////
 //
 //-////////////////////////////////////////////////////////////////////////////

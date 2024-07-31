@@ -1,6 +1,8 @@
 use tui::widgets::ListItem;
 
+//-//////////////////////////////////////////////////////////////////
 pub trait Listable {
-    fn to_list_item(&self, width: usize) -> ListItem;
+    fn to_list_item<'a>(self, width: usize) -> ListItem<'a>;
     fn is_selectable(&self) -> bool;
 }
+//-//////////////////////////////////////////////////////////////////

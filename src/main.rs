@@ -13,16 +13,17 @@ mod functions {
 }
 mod state {
     pub mod state_app;
-    pub mod state_config;
     pub mod state_interface;
     pub mod state_library;
+    pub mod state_playlist;
 }
 mod tasks {
     pub mod listener_input;
     pub mod listener_playback;
     pub mod listener_scanner;
     pub mod listener_state;
-    pub mod loop_tui;
+    pub mod listener_tui;
+    pub mod loop_intervals;
 }
 mod traits {
     pub mod trait_listable;
@@ -31,64 +32,74 @@ mod ui {
     pub mod models {
         pub mod model_component_list_state;
     }
+    pub mod utils {
+        pub mod ui_text_util;
+    }
     pub mod views {
         pub mod view_library;
         pub mod view_playback;
     }
 }
 mod types {
+    pub mod config;
     pub mod types_library_entry;
     pub mod types_msg_channels;
 }
 //-////////////////////////////////////////////////////////////////////////////
 
+use static_init::dynamic;
 use std::fs::File;
+use std::panic;
 use std::sync::mpsc::channel;
 use std::thread;
+use tracing::metadata::LevelFilter;
 use tracing_subscriber::prelude::*;
-use crate::state::state_app::AppState;
-use crate::tasks::listener_playback::start_playback_task;
 use crate::tasks::listener_input::start_input_listener;
+use crate::tasks::listener_playback::start_playback_listener;
 use crate::tasks::listener_scanner::ScannerActions;
 use crate::tasks::listener_scanner::start_fs_scanner_listener;
 use crate::tasks::listener_state::start_state_listener;
-use crate::tasks::loop_tui::start_tui_listener;
+use crate::tasks::listener_tui::start_tui_listener;
+use crate::tasks::loop_intervals::start_intervals;
+use crate::types::config::Config;
 use crate::types::types_msg_channels::MsgChannels;
-use tracing::metadata::LevelFilter;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
 //-////////////////////////////////////////////////////////////////////////////
+#[dynamic] static CONFIG: Config = Config::init();
+
 fn main() {
-    let state = AppState::init();
     // -- Init Logger -----------------------------------------------
     {
-        let config = state.config.clone();
-        if let Some(path) = &config.log_path {
-            dbg!(path);
+        if let Some(path) = &CONFIG.log_path {
             let file = File::create(path).unwrap();
             let file_log = tracing_subscriber::fmt::layer()
                 .with_writer(file)
-                .with_filter(LevelFilter::from_level(config.log_level));
+                .with_filter(LevelFilter::from_level(CONFIG.log_level));
             tracing_subscriber::registry()
                 .with(file_log)
                 .init();
         }
+
+        panic::set_hook(Box::new(|panic_info| {
+            error!("Thread {}", panic_info.to_string().replacen(":\n", ": ", 1));
+        }));
     }
 
     // -- Create Channels -------------------------------------------
     info!("Creating channels...");
     let (tx_exit    , rx_exit    ) = channel();
+    let (tx_playback, rx_playback) = channel();
     let (tx_scanner , rx_scanner ) = channel();
     let (tx_state   , rx_state   ) = channel();
-    let (tx_playback, rx_playback) = channel();
     let (tx_tui     , rx_tui     ) = channel();
 
     let channels = || MsgChannels{
         tx_exit    : tx_exit.clone(),
+        tx_playback: tx_playback.clone(),
         tx_scanner : tx_scanner.clone(),
         tx_state   : tx_state.clone(),
-        tx_playback: tx_playback.clone(),
         tx_tui     : tx_tui.clone(),
     };
 
@@ -97,9 +108,16 @@ fn main() {
     {
         let _threads = [
             {
-                let state = state.clone();
                 let channels = channels();
-                thread::spawn(move || start_state_listener(rx_state, channels, state))
+                thread::spawn(move || start_tui_listener(rx_tui, channels))
+            },
+            {
+                let channels = channels();
+                thread::spawn(move || start_playback_listener(rx_playback, channels))
+            },
+            {
+                let channels = channels();
+                thread::spawn(move || start_state_listener(rx_state, channels))
             },
             {
                 let channels = channels();
@@ -110,28 +128,21 @@ fn main() {
                 thread::spawn(move || start_input_listener(channels))
             },
             {
-                info!("Spawning playback thread");
                 let channels = channels();
-                thread::spawn(move || start_playback_task(rx_playback, channels))
+                thread::spawn(move || start_intervals(channels))
             },
         ];
-        let tui = {
-            let channels = channels();
-            thread::spawn(move || start_tui_listener(rx_tui, channels))
-        };
 
-        for dir in &state.config.media_dirs {
+        for dir in &CONFIG.media_dirs {
             tx_scanner.send(ScannerActions::ScanDir{dir: dir.clone()}).unwrap()
         }
 
         // -- Wait for exit signal --------------------------------------
-        if rx_exit.recv().is_ok() {
-            info!("Exit requested");
-            if let Err(err) = tui.join() {
-                error!("tui exit err: {:?}", err);
-            }
+        match rx_exit.recv() {
+            Ok(()) => info!("Exiting"),
+            Err(err) => error!("Unreachable exit channel error: {:?}", err),
         }
-    }
+    };
 }
 //-////////////////////////////////////////////////////////////////////////////
 //

@@ -1,8 +1,8 @@
-use crate::state::state_app::AppState;
+use std::sync::mpsc::Sender;
 use crate::tasks::listener_playback::PlaybackActions;
 use crate::tasks::listener_scanner::ScannerActions;
 use crate::tasks::listener_state::StateActions;
-use std::sync::mpsc::Sender;
+use crate::tasks::listener_tui::RenderActions;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -11,10 +11,10 @@ use std::sync::mpsc::Sender;
 #[derive(Clone)]
 pub struct MsgChannels {
     pub tx_exit    : Sender<()>,
-    pub tx_scanner : Sender<ScannerActions>,
     pub tx_playback: Sender<PlaybackActions>,
+    pub tx_scanner : Sender<ScannerActions>,
     pub tx_state   : Sender<StateActions>,
-    pub tx_tui     : Sender<Option<AppState>>,
+    pub tx_tui     : Sender<RenderActions>,
 }
 //-////////////////////////////////////////////////////////////////////////////
 //

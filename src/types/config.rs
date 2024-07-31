@@ -2,6 +2,7 @@ use dirs::home_dir;
 use std::path::PathBuf;
 use tracing::metadata::Level;
 
+//-//////////////////////////////////////////////////////////////////
 #[derive(Clone)]
 #[derive(Debug)]
 pub struct Config {
@@ -19,3 +20,4 @@ impl Config {
         }
     }
 }
+//-//////////////////////////////////////////////////////////////////
