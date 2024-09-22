@@ -29,7 +29,7 @@ pub fn term_text(mut buf: String, length: usize) -> String {
     buf
 }
 
-pub fn term_text_line(pre: &str, dynamic: String, post: &str, length: usize) -> String {
+pub fn term_text_line(length: usize, pre: &str, dynamic: String, post: &str) -> String {
     let fixed_len = pre.chars().count() + post.chars().count();
     let extra_len = length - fixed_len;
 

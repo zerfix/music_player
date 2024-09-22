@@ -1,4 +1,3 @@
-#![allow(clippy::result_large_err)]
 #![warn(unused_crate_dependencies)]
 
 #[macro_use]
@@ -6,7 +5,7 @@ extern crate tracing;
 
 //-////////////////////////////////////////////////////////////////////////////
 mod enums {
-    pub mod enum_navigate;
+    pub mod enum_input;
 }
 mod functions {
     pub mod functions_hash;
@@ -47,6 +46,7 @@ mod types {
 }
 //-////////////////////////////////////////////////////////////////////////////
 
+use color_eyre::Report;
 use static_init::dynamic;
 use std::fs::File;
 use std::panic;
@@ -54,9 +54,9 @@ use std::sync::mpsc::channel;
 use std::thread;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::prelude::*;
+use mimalloc::MiMalloc;
 use crate::tasks::listener_input::start_input_listener;
 use crate::tasks::listener_playback::start_playback_listener;
-use crate::tasks::listener_scanner::ScannerActions;
 use crate::tasks::listener_scanner::start_fs_scanner_listener;
 use crate::tasks::listener_state::start_state_listener;
 use crate::tasks::listener_tui::start_tui_listener;
@@ -67,13 +67,16 @@ use crate::types::types_msg_channels::MsgChannels;
 //-////////////////////////////////////////////////////////////////////////////
 //
 //-////////////////////////////////////////////////////////////////////////////
+#[global_allocator] static GLOBAL: MiMalloc = MiMalloc;
 #[dynamic] static CONFIG: Config = Config::init();
 
-fn main() {
+fn main() -> Result<(), Report> {
+    color_eyre::install()?;
+
     // -- Init Logger -----------------------------------------------
     {
         if let Some(path) = &CONFIG.log_path {
-            let file = File::create(path).unwrap();
+            let file = File::create(path)?;
             let file_log = tracing_subscriber::fmt::layer()
                 .with_writer(file)
                 .with_filter(LevelFilter::from_level(CONFIG.log_level));
@@ -91,14 +94,12 @@ fn main() {
     info!("Creating channels...");
     let (tx_exit    , rx_exit    ) = channel();
     let (tx_playback, rx_playback) = channel();
-    let (tx_scanner , rx_scanner ) = channel();
     let (tx_state   , rx_state   ) = channel();
     let (tx_tui     , rx_tui     ) = channel();
 
     let channels = || MsgChannels{
         tx_exit    : tx_exit.clone(),
         tx_playback: tx_playback.clone(),
-        tx_scanner : tx_scanner.clone(),
         tx_state   : tx_state.clone(),
         tx_tui     : tx_tui.clone(),
     };
@@ -121,7 +122,7 @@ fn main() {
             },
             {
                 let channels = channels();
-                thread::spawn(move || start_fs_scanner_listener(rx_scanner, channels))
+                thread::spawn(move || start_fs_scanner_listener(channels))
             },
             {
                 let channels = channels();
@@ -133,16 +134,14 @@ fn main() {
             },
         ];
 
-        for dir in &CONFIG.media_dirs {
-            tx_scanner.send(ScannerActions::ScanDir{dir: dir.clone()}).unwrap()
-        }
-
         // -- Wait for exit signal --------------------------------------
         match rx_exit.recv() {
             Ok(()) => info!("Exiting"),
             Err(err) => error!("Unreachable exit channel error: {:?}", err),
         }
     };
+
+    Ok(())
 }
 //-////////////////////////////////////////////////////////////////////////////
 //

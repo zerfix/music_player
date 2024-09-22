@@ -1,5 +1,6 @@
 use crossterm::execute;
 use crossterm::terminal;
+use tui::layout::Rect;
 use std::io::stdout;
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
@@ -19,6 +20,9 @@ use crate::ui::views::view_library::draw_library_view;
 //
 //-////////////////////////////////////////////////////////////////////////////
 pub enum RenderActions {
+    RenderRequest{
+        render_start: SystemTime,
+    },
     RenderFrame{
         render_start: SystemTime,
         common: RenderDataCommon,
@@ -30,7 +34,7 @@ pub enum RenderActions {
 #[derive(Debug)]
 pub struct RenderDataCommon {
     pub is_scanning: bool,
-    pub term_height: usize,
+    pub term_size: Rect,
 }
 
 #[derive(Debug)]
@@ -59,16 +63,17 @@ pub fn start_tui_listener(rx: Receiver<RenderActions>, tx: MsgChannels) {
     info!("Running tui render loop");
     while let Ok(msg) = rx.recv() {
         match msg {
+            RenderActions::RenderRequest{render_start} => {
+                let term_size: Rect = terminal.size().unwrap();
+                tx_state.send(StateActions::Render{render_start, term_size}).unwrap()
+            },
             RenderActions::RenderFrame{render_start, common, view} => {
-                let term_height = (terminal.size().unwrap().height) as usize;
-                if term_height != common.term_height {
-                    tx_state.send(StateActions::TuiUpdateTermHeight{render_start, term_height}).unwrap()
-                } else {
-                    if let Err(err) = terminal.draw(|frame| render_tui(common, view, frame)) {
-                        error!("Render error: {:?}", err)
-                    }
-                    info!("Render_time: {:?}", render_start.elapsed().unwrap());
+                execute!(terminal.backend_mut(), terminal::BeginSynchronizedUpdate).unwrap();
+                if let Err(err) = terminal.draw(|frame| render_tui(common, view, frame)) {
+                    error!("Render error: {:?}", err)
                 }
+                execute!(terminal.backend_mut(), terminal::EndSynchronizedUpdate).unwrap();
+                info!("Render_time: {:?}", render_start.elapsed().unwrap());
             },
             RenderActions::Exit => {
                 info!("resetting terminal");

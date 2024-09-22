@@ -1,12 +1,28 @@
-use audiotags::AudioTag;
-use audiotags::Tag;
+use color_eyre::Result;
+use lofty::file::AudioFile;
+use lofty::file::TaggedFileExt;
+use lofty::tag::Accessor;
+use tui::style::Modifier;
+use tui::style::Style;
+use tui::widgets::Paragraph;
 use std::cmp::Ordering;
 use std::hash::Hash;
-use std::path::PathBuf;
-use tui::widgets::ListItem;
+use std::path::Path;
+use std::time::Duration;
+use tui::Frame;
+use tui::backend::Backend;
+use tui::layout::Rect;
+use tui::text::Span;
+use tui::text::Spans;
+use tui::style::Color;
+use lofty::read_from_path;
+use lofty::prelude::ItemKey;
 use crate::functions::functions_hash::hash;
 use crate::traits::trait_listable::Listable;
+use crate::traits::trait_listable::ListRenderable;
+use crate::ui::utils::ui_text_util::term_text;
 use crate::ui::utils::ui_text_util::term_text_line;
+
 
 //-////////////////////////////////////////////////////////////////////////////
 //  Raw Entry
@@ -19,33 +35,36 @@ pub struct TrackFile {
     pub id_artist   : u64,
     pub id_album    : u64,
     pub id_track    : u64,
-    pub path        : PathBuf,
-    pub album_artist: Option<String>,
-    pub album_title : Option<String>,
-    /// only for when it differs from album_artist
-    pub track_artist: Option<String>,
-    pub disc        : Option<u16>,
-    pub track       : Option<u16>,
-    pub track_title : Option<String>,
-    pub duration    : Option<f64>,
-    pub year        : Option<i32>,
+    pub path        : Box<Path>,
+
+    pub duration     : Duration,
+    pub year         : Option<u16>,
+    pub album_artist : Option<Box<str>>,
+    pub album_title  : Option<Box<str>>,
+    pub album_number : Option<u8>,
+    pub track_artist : Option<Box<str>>,
+    pub track_title  : Option<Box<str>>,
+    pub track_number : Option<u8>,
 }
 
 impl TrackFile {
-    pub fn new(path: PathBuf, tag: Box<dyn AudioTag>) -> TrackFile {
-        let album_artist = tag.album_artist().filter(|a| !a.is_empty());
-        let track_artist = tag.artist()      .filter(|a| !a.is_empty());
-        let album_title  = tag.album_title() .filter(|a| !a.is_empty());
-        let track_title  = tag.title()       .filter(|a| !a.is_empty());
+    pub fn new(path: &Path) -> Result<TrackFile> {
+        let file = read_from_path(path)?;
 
-        let album_artist = album_artist.or(track_artist).map(|a| a.to_string());
-        let track_artist = track_artist.filter(|a| Some(*a) != album_artist.as_deref()).map(|a| a.to_string());
-        let album_title  = album_title.map(|at| at.to_string());
-        let disc         = tag.disc_number();
-        let track        = tag.track_number();
-        let track_title  = track_title.map(|t| t.to_string());
-        let duration     = tag.duration();
-        let year         = tag.year();
+        let properties = file.properties();
+        let primary = file.primary_tag().unwrap();
+
+        let duration = properties.duration();
+        let year     = primary.year().map(|n| n as u16);
+
+        let track_artist = primary.artist().map(|s| s.into_owned().into_boxed_str()).filter(|s| !s.is_empty());
+        let track_title  = primary.title().map(|s| s.into_owned().into_boxed_str()).filter(|s| !s.is_empty());
+        let track_number = primary.track().map(|n| n as u8);
+
+        let album_artist = primary.get_string(&ItemKey::AlbumArtist).map(|s| s.to_owned().into_boxed_str()).filter(|s| !s.is_empty());
+        let album_artist = album_artist.or(track_artist.clone());
+        let album_title  = primary.album().map(|s| s.into_owned().into_boxed_str()).filter(|s| !s.is_empty());
+        let album_number = primary.disk().map(|n| n as u8);
 
         let id_artist = {
             let artist = album_artist.clone().unwrap_or_default().to_lowercase();
@@ -60,46 +79,42 @@ impl TrackFile {
 
         let id_track = hash(path.to_str().unwrap().to_lowercase().as_bytes());
 
-        TrackFile{
+        let path = path.to_owned().into_boxed_path();
+
+        Ok(TrackFile{
             is_album_padding: false,
-            path,
-            album_artist,
-            album_title,
-            disc,
-            track,
-            track_artist,
-            track_title,
-            duration,
-            year,
             id_artist,
             id_album,
             id_track,
-        }
-    }
+            path,
 
-    pub fn try_from_path(path: PathBuf) -> Option<TrackFile> {
-        match Tag::new().read_from_path(&path) {
-            Ok(tag) => Some(TrackFile::new(path, tag)),
-            Err(_) => None,
-        }
+            duration,
+            year,
+            album_artist,
+            album_title,
+            album_number,
+            track_artist,
+            track_title,
+            track_number,
+        })
     }
 
     pub fn to_track_entry(&self) -> LibraryTrackEntry {
         match self.is_album_padding {
             true => LibraryTrackEntry::Album(LibraryAlbumEntryData{
                 id  : self.id_album,
-                name: self.album_title.clone().unwrap_or("<missing>".to_string()),
+                name: self.album_title.clone().unwrap_or("<missing>".to_owned().into_boxed_str()),
                 year: self.year,
             }),
             false => LibraryTrackEntry::Track(LibraryTrackEntryData{
                 year        : self.year,
                 album_artist: self.album_artist.clone(),
-                album_name  : self.album_title.clone().unwrap_or("<missing>".to_string()),
+                album_name  : self.album_title.clone().unwrap_or("<missing>".to_owned().into_boxed_str()),
                 id          : self.id_track,
-                disc        : self.disc,
-                track       : self.track,
+                disc        : self.album_number,
+                track       : self.track_number,
                 track_artist: self.track_artist.clone(),
-                track_name  : self.track_title.clone().unwrap_or(self.path.to_str().unwrap_or("<missing>").to_string()),
+                track_name  : self.track_title.clone().unwrap_or(self.path.to_str().unwrap().to_owned().into_boxed_str()),
                 duration    : self.duration,
                 path        : self.path.clone(),
             })
@@ -108,10 +123,6 @@ impl TrackFile {
 }
 
 impl Listable for TrackFile {
-    fn to_list_item<'a>(self, _width: usize) -> ListItem<'a>{
-        todo!()
-    }
-
     fn is_selectable(&self) -> bool {
         !self.is_album_padding
     }
@@ -122,15 +133,15 @@ impl PartialOrd for TrackFile {
         Some((
             self.year,
             &self.album_title,
-            self.disc,
+            self.album_number,
             !self.is_album_padding,
-            self.track,
+            self.track_number,
         ).cmp(&(
             other.year,
             &other.album_title,
-            other.disc,
+            other.album_number,
             !other.is_album_padding,
-            other.track,
+            other.track_number,
         )))
     }
 }
@@ -162,8 +173,8 @@ impl Hash for TrackFile {
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub enum LibraryFilterEntry {
     All,
-    Artist{name: Option<String>},
-    Year{year: Option<i32>},
+    Artist{name: Option<Box<str>>},
+    Year{year: Option<u16>},
 }
 
 impl LibraryFilterEntry {
@@ -171,7 +182,7 @@ impl LibraryFilterEntry {
         match self {
             LibraryFilterEntry::All => "ALL".to_string(),
             LibraryFilterEntry::Artist { name } => match name {
-                Some(name) => name.clone(),
+                Some(name) => name.to_string(),
                 None       => "<missing>".to_string(),
             },
             LibraryFilterEntry::Year { year } => match year {
@@ -186,9 +197,26 @@ impl Listable for LibraryFilterEntry {
     fn is_selectable(&self) -> bool {
         true
     }
+}
 
-    fn to_list_item<'a>(self, width: usize) -> tui::widgets::ListItem<'a> {
-        ListItem::new(term_text_line(" ", self.name(), " ", width))
+impl ListRenderable for LibraryFilterEntry {
+    fn render<B: Backend>(self, frame: &mut Frame<B>, area: Rect, is_active: bool, is_selected: bool) {
+        let style = match (is_active, is_selected) {
+            (true , true ) => Some(Style::default().fg(Color::Rgb(0, 0, 0)).bg(Color::Cyan)),
+            (false, true ) => Some(Style::default().fg(Color::Black       ).bg(Color::Red )),
+            (true , false) => None,
+            (false, false) => None,
+        };
+
+        let name = term_text_line(area.width as usize, " ", self.name(), " ");
+
+        frame.render_widget(
+            match style {
+                Some(style) => Paragraph::new(Span::raw(name)).style(style),
+                None        => Paragraph::new(Span::raw(name)),
+            },
+            area,
+        )
     }
 }
 
@@ -211,7 +239,7 @@ impl LibraryTrackEntry {
         }
     }
 
-    pub fn year(&self) -> Option<i32> {
+    pub fn year(&self) -> Option<u16> {
         match self {
             LibraryTrackEntry::Album(album) => album.year,
             LibraryTrackEntry::Track(track) => track.year,
@@ -268,9 +296,85 @@ impl Listable for LibraryTrackEntry {
             LibraryTrackEntry::Track(_) => true,
         }
     }
+}
 
-    fn to_list_item<'a>(self, width: usize) -> ListItem<'a> {
-        ListItem::new(self.render(width))
+impl ListRenderable for LibraryTrackEntry {
+    fn render<B: Backend>(self, frame: &mut Frame<B>, area: Rect, is_active: bool, is_selected: bool) {
+        match self {
+            LibraryTrackEntry::Album(album) => {
+                let album_name = album.name.to_string();
+                let year       = album.year.map(|y| y.to_string()).unwrap_or("----".to_string());
+
+                let album_name = format!(" {} ", album_name);
+                let year       = format!(" {} ", year);
+
+                let dyn_len = area.width as usize
+                    - album_name.len()
+                    - year.len();
+                let line = vec!["⎯"; dyn_len].join("");
+
+                let fg2 = Color::Cyan;
+                let style_c = Style::default().fg(fg2);
+
+                let line = Paragraph::new(Spans::from(vec![
+                    Span::raw(album_name),
+                    Span::styled(line, style_c),
+                    Span::raw(year),
+                ])).style(Style::default().add_modifier(Modifier::BOLD));
+
+                frame.render_widget(line, area)
+            },
+            LibraryTrackEntry::Track(track) => {
+                let num = format!("  {:02} ", track.track.unwrap_or(0));
+                let name = track.track_name.to_string();
+                let duration = {
+                    let dur = track.duration.as_secs();
+                    let seperate = |time: u64| (time % 60, time / 60);
+                    match dur {
+                        ..=3599 => {
+                            let (seconds, minutes) = seperate(dur);
+                            format!(" {:02}:{:02}  ", minutes, seconds)
+                        },
+                        3600.. => {
+                            let (seconds, minutes) = seperate(dur);
+                            let (minutes, hours  ) = seperate(minutes);
+                            format!(" {:02}:{:02}:{:02}  ", hours, minutes, seconds)
+                        },
+                    }
+                };
+
+                let dyn_lenght = area.width as usize
+                    - num.len()
+                    - duration.len();
+                let name = term_text(name, dyn_lenght);
+
+                let bg = match (is_active, is_selected) {
+                    (true , true ) => Some(Color::Cyan),
+                    (false, true ) => Some(Color::Red ),
+                    (true , false) => None,
+                    (false, false) => None,
+                };
+                let fg2 = match (is_active, is_selected) {
+                    (true , true ) => Color::Black      ,
+                    (false, true ) => Color::Black      ,
+                    (true , false) => Color::LightYellow,
+                    (false, false) => Color::Yellow     ,
+                };
+                let style_y = Style::default().fg(fg2);
+
+                let line = Paragraph::new(Spans::from(vec![
+                    Span::styled(num, style_y),
+                    Span::raw(name),
+                    Span::styled(duration, style_y),
+                ]));
+                let line = match bg {
+                    Some(bg) => line.style(Style::default().bg(bg)),
+                    None     => line,
+                };
+
+                frame.render_widget(line, area)
+            },
+        }
     }
 }
 
@@ -278,8 +382,8 @@ impl Listable for LibraryTrackEntry {
 #[derive(Debug)]
 pub struct LibraryAlbumEntryData {
     pub id: u64,
-    pub name: String,
-    pub year: Option<i32>,
+    pub name: Box<str>,
+    pub year: Option<u16>,
 }
 
 impl PartialOrd for LibraryAlbumEntryData {
@@ -306,15 +410,15 @@ impl Eq for LibraryAlbumEntryData {}
 #[derive(Debug)]
 pub struct LibraryTrackEntryData {
     pub id: u64,
-    pub disc: Option<u16>,
-    pub album_artist: Option<String>,
-    pub album_name: String,
-    pub track: Option<u16>,
-    pub track_artist: Option<String>,
-    pub track_name: String,
-    pub year: Option<i32>,
-    pub duration: Option<f64>,
-    pub path: PathBuf,
+    pub disc: Option<u8>,
+    pub album_artist: Option<Box<str>>,
+    pub album_name: Box<str>,
+    pub track: Option<u8>,
+    pub track_artist: Option<Box<str>>,
+    pub track_name: Box<str>,
+    pub year: Option<u16>,
+    pub duration: Duration,
+    pub path: Box<Path>,
 }
 
 impl Ord for LibraryTrackEntryData {
@@ -348,43 +452,6 @@ impl PartialEq for LibraryTrackEntryData {
 }
 
 impl Eq for LibraryTrackEntryData { }
-
-impl LibraryTrackEntry {
-    pub fn render(&self, width: usize) -> String {
-        match self {
-            LibraryTrackEntry::Album(album) => {
-                let year_str = album.year.map(|y| y.to_string()).unwrap_or("----".to_string());
-                let year = format!(" {} ", year_str);
-
-                term_text_line(" ", album.name.clone(), &year, width)
-            },
-            LibraryTrackEntry::Track(track) => {
-                let num = format!("  {:02} ", track.track.unwrap_or(0));
-                let name = track.track_name.clone();
-                let duration = match track.duration {
-                    Some(dur) => {
-                        let dur = dur.round() as usize;
-                        let seperate = |time: usize| (time % 60, time / 60);
-                        match dur {
-                            ..=3599 => {
-                                let (seconds, minutes) = seperate(dur);
-                                format!(" {:02}:{:02}  ", minutes, seconds)
-                            },
-                            3600.. => {
-                                let (seconds, minutes) = seperate(dur);
-                                let (minutes, hours  ) = seperate(minutes);
-                                format!(" {:02}:{:02}:{:02}  ", hours, minutes, seconds)
-                            },
-                        }
-                    },
-                    None => " --:--  ".to_string(),
-                };
-
-                term_text_line(&num, name, &duration, width)
-            },
-        }
-    }
-}
 
 //-////////////////////////////////////////////////////////////////////////////
 //

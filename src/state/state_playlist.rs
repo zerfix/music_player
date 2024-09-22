@@ -1,46 +1,52 @@
-use crate::types::types_library_entry::LibraryTrackEntry;
+use crate::types::types_library_entry::TrackFile;
 
 //-//////////////////////////////////////////////////////////////////
 #[derive(Clone)]
 #[derive(Debug)]
 pub struct StatePlaylist {
-    pub list: Vec<LibraryTrackEntry>,
-    pub index: usize,
+    pub list: Vec<TrackFile>,
+    pub selected: usize,
 }
 
 impl StatePlaylist {
     pub fn init() -> StatePlaylist {
         StatePlaylist{
             list: vec![],
-            index: 0,
+            selected: 0,
         }
     }
 
-    pub fn next(&mut self) -> Option<LibraryTrackEntry> {
-        if self.list.len() == self.index {
-            return None;
-        }
-        self.index += 1;
-        Some(self.list[self.index].clone())
+    pub fn get_current_track(&self) -> Option<&TrackFile> {
+        self.list.get(self.selected)
     }
 
-    pub fn previous(&mut self) -> Option<LibraryTrackEntry> {
-        match self.index {
-            0 => None,
-            _ => {
-                self.index -= 1;
-                Some(self.list[self.index].clone())
-            }
+    pub fn get_next_track(&self) -> Option<&TrackFile> {
+        self.list.get(self.selected+1)
+    }
+
+    pub fn next(&mut self) {
+        self.selected += 1;
+    }
+
+    pub fn previous(&mut self) {
+        match self.selected {
+            0 => {},
+            _ => self.selected -= 1,
         }
     }
 
-    pub fn append(&mut self, track: LibraryTrackEntry) {
+    pub fn replace(&mut self, list: Vec<TrackFile>, selected: usize) {
+        self.list = list;
+        self.selected = selected;
+    }
+
+    pub fn append(&mut self, track: TrackFile) {
         self.list.push(track);
     }
 
     pub fn clear(&mut self) {
         self.list.clear();
-        self.index = 0;
+        self.selected = 0;
     }
 }
 //-//////////////////////////////////////////////////////////////////

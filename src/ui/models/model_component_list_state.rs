@@ -190,9 +190,6 @@ mod tests {
         }
     }
     impl Listable for DummyElement {
-        fn to_list_item<'a>(self, _width: usize) -> tui::widgets::ListItem<'a> {
-            todo!()
-        }
         fn is_selectable(&self) -> bool {
             self.selectable
         }

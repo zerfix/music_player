@@ -1,52 +1,48 @@
-use anyhow::Error;
+use color_eyre::Result;
 use jwalk::WalkDir;
 use rayon::prelude::*;
-use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 use crate::tasks::listener_state::StateActions;
 use crate::tasks::listener_tui::RenderActions;
 use crate::types::types_library_entry::TrackFile;
 use crate::types::types_msg_channels::MsgChannels;
+use crate::CONFIG;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
 //-////////////////////////////////////////////////////////////////////////////
-pub enum ScannerActions {
-    ScanDir{dir: PathBuf},
+pub fn start_fs_scanner_listener(tx: MsgChannels) {
+    if let Err(err) = scanner_loop(&tx) {
+        error!("scan error: {:?}", err);
+        tx.tx_tui.send(RenderActions::Exit).unwrap();
+    }
 }
 
-pub fn start_fs_scanner_listener(rx: Receiver<ScannerActions>, tx: MsgChannels) {
-    if let Err(err) = scanner_loop(rx, &tx) {
-        error!("scan error: {:?}", err)
-    }
+fn scanner_loop(tx: &MsgChannels) -> Result<()> {
+    let tx_state = &tx.tx_state;
 
-    info!("exit");
-    tx.tx_tui.send(RenderActions::Exit).unwrap();
-}
+    tx_state.send(StateActions::ScanIsScanning { is_scanning: true })?;
+    info!("Starting scan of '{:?}'", CONFIG.media_dirs);
+    let time = SystemTime::now();
 
-fn scanner_loop(rx: Receiver<ScannerActions>, tx: &MsgChannels) -> Result<(), Error> {
-    while let Ok(msg) = rx.recv() {
-        match msg {
-            ScannerActions::ScanDir{dir} => {
-                info!("starting scan of '{:?}'", dir.clone());
-                tx.tx_state.send(StateActions::ScanIsScanning { is_scanning: true })?;
-                let time = SystemTime::now();
+    CONFIG.media_dirs.par_iter()
+        .flat_map(|dir| WalkDir::new(dir)
+            .into_iter()
+            .filter_map(Result::ok)
+            .par_bridge()
+        )
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .for_each(|path| match TrackFile::new(&path) {
+            Ok(track) => tx_state.send(StateActions::ScanAddSong{track}).unwrap(),
+            Err(e) => error!("Parse track error: {:?} {:?}", path, e),
+        });
 
-                WalkDir::new(dir.clone())
-                    .into_iter()
-                    .par_bridge()
-                    .filter_map(Result::ok)
-                    .filter(|entry| entry.path().is_file())
-                    .filter_map(|entry| TrackFile::try_from_path(entry.path()))
-                    .map(|track| tx.tx_state.send(StateActions::ScanAddSong{track}))
-                    .collect::<Result<Vec<_>, _>>()?;
+    info!("scan of all directories took: {:?}", SystemTime::now().duration_since(time)?);
 
-                info!("scan of '{:?}' took: {:?}", dir, SystemTime::now().duration_since(time)?);
-                tx.tx_state.send(StateActions::ScanIsScanning { is_scanning: false })?;
-            },
-        }
-    }
+    tx_state.send(StateActions::ScanIsScanning { is_scanning: false })?;
+
+    info!("scan thread exit");
     Ok(())
 }
 //-////////////////////////////////////////////////////////////////////////////

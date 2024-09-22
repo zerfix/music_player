@@ -1,10 +1,13 @@
-use anyhow::anyhow;
+use color_eyre::eyre::eyre;
 use enum_iterator::Sequence;
 use enum_iterator::next_cycle;
 use enum_iterator::previous_cycle;
 use rayon::prelude::*;
 use std::time::SystemTime;
-use crate::enums::enum_navigate::Navigate;
+use crate::enums::enum_input::InputGlobalEffect;
+use crate::enums::enum_input::InputLocal;
+use crate::enums::enum_input::InputLocalEffect;
+use crate::enums::enum_input::InputEffect;
 use crate::types::types_library_entry::LibraryFilterEntry;
 use crate::types::types_library_entry::TrackFile;
 use crate::ui::models::model_component_list_state::SortedListState;
@@ -52,54 +55,93 @@ impl<'a> StateLibrary {
         }
     }
 
-    // -- Navigate ------------------------------------------------------------
+    // -- Navigate -----------------------------------------------------------
 
-    pub fn navigate(&mut self, navigate: Navigate) {
-        if let Navigate::Tab = navigate {
-            self.selected_tab = next_cycle(&self.selected_tab);
-            self.refresh_filter_list();
-            return;
+    pub fn handle_input(&self, input: InputLocal) -> InputEffect {
+        let local  = |effect: InputLocalEffect | InputEffect::Local(effect);
+        let global = |effect: InputGlobalEffect| InputEffect::Global(effect);
+        match input {
+            InputLocal::Up     => local(InputLocalEffect::Up(1)),
+            InputLocal::Down   => local(InputLocalEffect::Down(1)),
+            InputLocal::Left   => local(InputLocalEffect::Left),
+            InputLocal::Right  => match self.selected_column {
+                LibraryColumn::Filter => local(InputLocalEffect::Right),
+                LibraryColumn::Tracks => global(InputGlobalEffect::AppendTrack(self.list_tracks.selected_entry().unwrap().clone())),
+            },
+            InputLocal::PgUp   => local(InputLocalEffect::Up(10)),
+            InputLocal::PgDown => local(InputLocalEffect::Down(10)),
+            InputLocal::Home   => local(InputLocalEffect::Home),
+            InputLocal::End    => local(InputLocalEffect::End),
+            InputLocal::Tab    => local(InputLocalEffect::NextTab),
+            InputLocal::RevTab => local(InputLocalEffect::PrevTab),
+            InputLocal::Space  => match self.selected_column {
+                LibraryColumn::Filter => InputEffect::None,
+                LibraryColumn::Tracks => {
+                    let entry = match self.list_tracks.selected_entry() {
+                         None => {return InputEffect::None},
+                         Some(entry) => entry,
+                    };
+                    let tracks = self.list_tracks.entries().iter()
+                        .filter(|t| t.album_artist == entry.album_artist)
+                        .cloned()
+                        .collect::<Vec<TrackFile>>();
+                    global(InputGlobalEffect::AppendTracks(tracks))
+                },
+            },
+            InputLocal::Enter => match self.selected_column {
+                LibraryColumn::Filter => local(InputLocalEffect::Right),
+                LibraryColumn::Tracks => {
+                    let entry = match self.list_tracks.selected_entry() {
+                         None => {return InputEffect::None},
+                         Some(entry) => entry,
+                    };
+                    let tracks = self.list_tracks.entries().iter()
+                        .filter(|t| t.album_artist == entry.album_artist)
+                        .cloned()
+                        .collect::<Vec<TrackFile>>();
+                    let index = self.list_tracks.selected_index();
+                    global(InputGlobalEffect::ReplaceTracksAndPlay{tracks, index})
+                },
+            },
         }
-        if let Navigate::RevTab = navigate {
-            self.selected_tab = previous_cycle(&self.selected_tab);
-            self.refresh_filter_list();
-            return;
-        }
+    }
 
+    pub fn handle_input_effect(&mut self, effect: InputLocalEffect) {
         match self.selected_column {
             LibraryColumn::Filter => {
-                let pre_filter = self.list_filter.selected_index();
-                match navigate {
-                    Navigate::Up     => self.list_filter.select_prev(1),
-                    Navigate::Down   => self.list_filter.select_next(1),
-                    Navigate::Left   => {},
-                    Navigate::Right  => self.selected_column = LibraryColumn::Tracks,
-                    Navigate::Enter  => self.selected_column = LibraryColumn::Tracks,
-                    Navigate::PgUp   => self.list_filter.select_prev(10),
-                    Navigate::PgDown => self.list_filter.select_next(10),
-                    Navigate::Home   => self.list_filter.select_start(),
-                    Navigate::End    => self.list_filter.select_end(),
-                    Navigate::Tab    => unreachable!(),
-                    Navigate::RevTab => unreachable!(),
-                }
-                let post_filter = self.list_filter.selected_index();
-                if pre_filter != post_filter {self.refresh_tracks_list()}
+                match effect {
+                    InputLocalEffect::Up(steps)   => {
+                        self.list_filter.select_prev(steps);
+                        self.refresh_tracks_list();
+                    },
+                    InputLocalEffect::Down(steps) => {
+                        self.list_filter.select_next(steps);
+                        self.refresh_tracks_list();
+                    },
+                    InputLocalEffect::Left        => {},
+                    InputLocalEffect::Right       => self.selected_column = LibraryColumn::Tracks,
+                    InputLocalEffect::Home        => self.list_filter.select_start(),
+                    InputLocalEffect::End         => self.list_filter.select_end(),
+                    InputLocalEffect::NextTab => {
+                        self.selected_tab = next_cycle(&self.selected_tab);
+                        self.refresh_filter_list();
+                    },
+                    InputLocalEffect::PrevTab => {
+                        self.selected_tab = previous_cycle(&self.selected_tab);
+                        self.refresh_filter_list();
+                    },
+                };
             },
-            LibraryColumn::Tracks => {
-                match navigate {
-                    Navigate::Up     => self.list_tracks.select_prev(1),
-                    Navigate::Down   => self.list_tracks.select_next(1),
-                    Navigate::Left   => self.selected_column = LibraryColumn::Filter,
-                    Navigate::Right  => {},
-                    Navigate::Enter  => {}, // todo: implement play
-                    Navigate::PgUp   => self.list_tracks.select_prev(10),
-                    Navigate::PgDown => self.list_tracks.select_next(10),
-                    Navigate::Home   => self.list_tracks.select_start(),
-                    Navigate::End    => self.list_tracks.select_end(),
-                    Navigate::Tab    => unreachable!(),
-                    Navigate::RevTab => unreachable!(),
-                }
-            },
+            LibraryColumn::Tracks => match effect {
+                InputLocalEffect::Up(steps)   => self.list_tracks.select_prev(steps),
+                InputLocalEffect::Down(steps) => self.list_tracks.select_next(steps),
+                InputLocalEffect::Left        => self.selected_column = LibraryColumn::Filter,
+                InputLocalEffect::Right       => {},
+                InputLocalEffect::Home        => self.list_tracks.select_start(),
+                InputLocalEffect::End         => self.list_tracks.select_end(),
+                InputLocalEffect::NextTab     => {},
+                InputLocalEffect::PrevTab     => {},
+            }
         }
     }
 
@@ -115,7 +157,7 @@ impl<'a> StateLibrary {
         self.list_filter.add(filter);
 
         // add to track list
-        let add_to_track_list = match self.list_filter.selected_entry().ok_or(anyhow!("Filter is empty")).unwrap() {
+        let add_to_track_list = match self.list_filter.selected_entry().ok_or(eyre!("Filter is empty")).unwrap() {
             LibraryFilterEntry::All => true,
             LibraryFilterEntry::Artist{name} => *name == track.album_artist,
             LibraryFilterEntry::Year{year} => *year == track.year,
@@ -165,7 +207,7 @@ impl<'a> StateLibrary {
             })
             .cloned()
             .flat_map(|track| {
-                match track.track {
+                match track.track_number {
                     Some(1) => {
                         let mut header = track.clone();
                         header.is_album_padding = true;

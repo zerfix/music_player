@@ -1,9 +1,14 @@
-use anyhow::Error;
+use color_eyre::Result;
+use color_eyre::Report;
+use tui::layout::Rect;
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
-use crate::enums::enum_navigate::Navigate;
+use crate::enums::enum_input::InputGlobalEffect;
+use crate::enums::enum_input::InputEffect;
+use crate::enums::enum_input::InputGlobal;
+use crate::enums::enum_input::InputLocal;
 use crate::state::state_app::AppState;
-use crate::state::state_interface::StateInterface;
+use crate::tasks::listener_playback::PlaybackActions;
 use crate::tasks::listener_tui::RenderActions;
 use crate::types::types_library_entry::TrackFile;
 use crate::types::types_msg_channels::MsgChannels;
@@ -12,18 +17,12 @@ use crate::types::types_msg_channels::MsgChannels;
 //
 //-////////////////////////////////////////////////////////////////////////////
 pub enum StateActions {
-    PlaybackPlayFrom,
-    PlaybackResumePause,
-    PlaybackStop,
-    PlaybackStopAndClear,
-    PlaybackNextCallback,
-    PlaybackNextTrack,
-    PlaybackPreviousTrack,
-    InputNavigate(Navigate),
+    InputLocal(InputLocal),
+    InputGlobal(InputGlobal),
+    PlaybackNextTrack{error: Option<Report>},
     ScanIsScanning{is_scanning: bool}, // used to show user if scanning on startup
     ScanAddSong{track: TrackFile},
-    TuiUpdateTermHeight{render_start: SystemTime, term_height: usize},
-    Render{render_start: SystemTime},
+    Render{render_start: SystemTime, term_size: Rect},
     Exit,
 }
 
@@ -36,57 +35,80 @@ pub fn start_state_listener(rx: Receiver<StateActions>, tx: MsgChannels) {
     tx.tx_exit.send(()).unwrap();
 }
 
-fn state_loop(rx: Receiver<StateActions>, tx: MsgChannels) -> Result<(), Error> {
+fn state_loop(rx: Receiver<StateActions>, tx: MsgChannels) -> Result<()> {
     let mut state = AppState::init();
     let tx_playback = tx.tx_playback;
     let tx_tui      = tx.tx_tui;
-    let tx_state    = tx.tx_state;
 
     while let Ok(msg) = rx.recv() {
         match msg {
-            StateActions::InputNavigate(nav) => {
-                state.mut_library(|lib| lib.navigate(nav));
+            StateActions::InputLocal(input) => {
+                state.mutate(|_, library, playlist| {
+                    let effect = library.handle_input(input);
+                    match effect {
+                        InputEffect::Local(effect) => library.handle_input_effect(effect),
+                        InputEffect::Global(effect) => match effect {
+                            InputGlobalEffect::PlayPause => {todo!()},
+                            InputGlobalEffect::ReplaceTracksAndPlay { tracks, index } => {
+                                playlist.replace(tracks, index);
+                                tx_playback.send(PlaybackActions::Clear).unwrap();
+                                if let Some(track) = playlist.get_current_track() {
+                                    tx_playback.send(PlaybackActions::Play {
+                                        path: track.path.clone(),
+                                        start_at: None,
+                                    }).unwrap();
+                                }
+                                if let Some(track) = playlist.get_next_track() {
+                                    tx_playback.send(PlaybackActions::Que {
+                                        path: track.path.clone(),
+                                    }).unwrap();
+                                }
+                            },
+                            InputGlobalEffect::AppendTracks(tracks) => {todo!()},
+                            InputGlobalEffect::AppendTrack(track) => {todo!()},
+                            InputGlobalEffect::ClearTracks => {todo!()},
+                        },
+                        InputEffect::None => {},
+                    };
+                });
             },
-            StateActions::PlaybackPlayFrom => {
-                // let (index, tracks) = state.library.track_state();
-                // playlist_index = 0;
-                // playlist = tracks.iter()
-                //     .skip(index.unwrap_or(0))
-                //     .filter_map(|t| match t {
-                //         LibraryTrackEntry::Album(_) => None,
-                //         LibraryTrackEntry::Track(t) => Some(t),
-                //     })
-                //     .cloned()
-                //     .collect::<Vec<LibraryTrackEntryData>>();
-                // manager.clear();
-                // let x = playlist.first().and_then(|track|{
-
-                // });
+            StateActions::InputGlobal(input) => {
+                state.mutate(|_, _, playlist| {
+                    match input {
+                        InputGlobal::PlayPause => {todo!()},
+                        InputGlobal::Previous => {todo!()},
+                        InputGlobal::Next => {todo!()},
+                        InputGlobal::Stop => {
+                            info!("stopping state");
+                            playlist.clear();
+                            tx_playback.send(PlaybackActions::Clear).unwrap()
+                        },
+                        InputGlobal::SkipBackward => {todo!()},
+                        InputGlobal::SkipForward => {todo!()},
+                    }
+                });
             },
-            StateActions::PlaybackResumePause => {},
-            StateActions::PlaybackStop => {},
-            StateActions::PlaybackStopAndClear => {},
-            StateActions::PlaybackNextCallback => {},
-            StateActions::PlaybackNextTrack => {},
-            StateActions::PlaybackPreviousTrack => {},
+            StateActions::PlaybackNextTrack{error} => {
+                state.mutate(|_, _, playlist| {
+                    playlist.next();
+                    if let Some(track) = playlist.get_next_track() {
+                        tx_playback.send(PlaybackActions::Que{path: track.path.clone()}).unwrap();
+                    }
+                });
+            },
             StateActions::ScanIsScanning { is_scanning } => {
-                state.mut_interface(|interface: &mut StateInterface| {
+                state.mutate(|interface, _, _| {
                     interface.is_scanning = is_scanning;
                 })
             },
             StateActions::ScanAddSong { track } => {
-                state.mut_library(|lib| {
-                    lib.new_track(track);
-                    info!("{} tracks", lib.tracks.len());
+                state.mutate(|_, library, _| {
+                    library.new_track(track);
+                    info!("{} tracks", library.tracks.len());
                 })
             },
-            StateActions::TuiUpdateTermHeight{render_start, term_height} => {
-                info!("updating term height: {}", term_height);
-                state.term_height = term_height;
-                tx_state.send(StateActions::Render{render_start}).unwrap();
-            },
-            StateActions::Render{render_start} => {
-                if let Some((common, view)) = state.render_state(false) {
+            StateActions::Render{render_start, term_size} => {
+                if let Some((common, view)) = state.render_state(false, term_size) {
                     tx_tui.send(RenderActions::RenderFrame{render_start, common, view}).unwrap();
                 }
             },

@@ -9,6 +9,7 @@ pub struct Config {
     pub media_dirs: Vec<PathBuf>,
     pub log_path: Option<PathBuf>,
     pub log_level: Level,
+    pub framerate: f64,
 }
 
 impl Config {
@@ -17,6 +18,7 @@ impl Config {
             media_dirs: vec!["/mnt/musikk".parse().unwrap()],
             log_path: Some(home_dir().unwrap().join("music_player_debug.log")),
             log_level: Level::INFO,
+            framerate: 100.0,
         }
     }
 }

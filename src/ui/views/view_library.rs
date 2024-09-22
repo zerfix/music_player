@@ -12,8 +12,10 @@ use crate::state::state_library::LibraryColumn;
 use crate::state::state_library::LibraryTab;
 use crate::tasks::listener_tui::RenderDataCommon;
 use crate::traits::trait_listable::Listable;
+use crate::traits::trait_listable::ListRenderable;
 use crate::types::types_library_entry::LibraryFilterEntry;
 use crate::types::types_library_entry::LibraryTrackEntry;
+
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -45,16 +47,12 @@ pub fn draw_library_view<B: Backend>(
         .split(area);
 
     // --- Left List ---
-    frame.render_widget(
-        List::new(
-            assemble_list(
-                chunks[0],
-                view.column_selected == LibraryColumn::Filter,
-                view.left,
-                view.left_selected,
-            )
-        ),
+    render_list(
+        frame,
         chunks[0],
+        view.column_selected == LibraryColumn::Filter,
+        view.left,
+        view.left_selected,
     );
 
     // --- Separator ---
@@ -68,18 +66,13 @@ pub fn draw_library_view<B: Backend>(
         chunks[1]
     );
 
-
     // --- Right List ---
-    frame.render_widget(
-        List::new(
-            assemble_list(
-                chunks[2],
-                view.column_selected == LibraryColumn::Tracks,
-                view.right,
-                view.right_selected
-            )
-        ),
-        chunks[2]
+    render_list(
+        frame,
+        chunks[2],
+        view.column_selected == LibraryColumn::Tracks,
+        view.right,
+        view.right_selected,
     );
 
     // state.list_filter.render(frame, chunks[0], state.selected_column == LibraryColumn::Filter);
@@ -87,33 +80,19 @@ pub fn draw_library_view<B: Backend>(
     // state.list_tracks.render(frame, chunks[2], state.selected_column == LibraryColumn::Tracks);
 }
 
-fn assemble_list<'a, T: Listable>(area: Rect, active: bool, list: Vec<T>, selected: usize) -> Vec<ListItem<'a>> {
-    // todo: do style globally somewhere else
-    let selected_style = match active {
-        true => Style::default()
-            .fg(Color::White)
-            .bg(Color::Rgb(20, 100, 20)),
-        false => Style::default()
-            .fg(Color::White)
-            .bg(Color::DarkGray),
-    };
-    let unselectable_style = Style::default()
-        .fg(Color::White)
-        .bg(Color::Rgb(20, 20, 100));
+fn render_list<'a, B: Backend, T: Listable + ListRenderable>(frame: &mut Frame<B>, area: Rect, active: bool, list: Vec<T>, selected: usize) {
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(vec![Constraint::Length(1); area.height as usize])
+        .split(area)
+        .into_iter();
 
     list.into_iter()
-        .map(|element| (
-            element.is_selectable(),
-            element.to_list_item(area.width as usize),
-        ))
+        .zip(layout)
         .enumerate()
-        .map(|(i, (selectable, element))| match (selectable, i == selected) {
-            (true , true ) => element.style(selected_style),
-            (true , false) => element,
-            (false, _    ) => element.style(unselectable_style)
+        .for_each(|(i, (element, chunk))| {
+            element.render(frame, chunk, active, i == selected)            
         })
-        .take(area.height as usize)
-        .collect::<Vec<ListItem>>()
 }
 //-////////////////////////////////////////////////////////////////////////////
 //
