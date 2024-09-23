@@ -1,6 +1,5 @@
 use color_eyre::Result;
 use color_eyre::Report;
-use tui::layout::Rect;
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 use crate::enums::enum_input::InputGlobalEffect;
@@ -12,6 +11,7 @@ use crate::tasks::listener_playback::PlaybackActions;
 use crate::tasks::listener_tui::RenderActions;
 use crate::types::types_library_entry::TrackFile;
 use crate::types::types_msg_channels::MsgChannels;
+use crate::types::types_tui::TermSize;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -22,7 +22,7 @@ pub enum StateActions {
     PlaybackNextTrack{error: Option<Report>},
     ScanIsScanning{is_scanning: bool}, // used to show user if scanning on startup
     ScanAddSong{track: TrackFile},
-    Render{render_start: SystemTime, term_size: Rect},
+    Render{render_start: SystemTime, term_size: TermSize},
     Exit,
 }
 

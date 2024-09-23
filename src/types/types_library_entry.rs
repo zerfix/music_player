@@ -2,26 +2,14 @@ use color_eyre::Result;
 use lofty::file::AudioFile;
 use lofty::file::TaggedFileExt;
 use lofty::tag::Accessor;
-use tui::style::Modifier;
-use tui::style::Style;
-use tui::widgets::Paragraph;
 use std::cmp::Ordering;
 use std::hash::Hash;
 use std::path::Path;
 use std::time::Duration;
-use tui::Frame;
-use tui::backend::Backend;
-use tui::layout::Rect;
-use tui::text::Span;
-use tui::text::Spans;
-use tui::style::Color;
 use lofty::read_from_path;
 use lofty::prelude::ItemKey;
 use crate::functions::functions_hash::hash;
 use crate::traits::trait_listable::Listable;
-use crate::traits::trait_listable::ListRenderable;
-use crate::ui::utils::ui_text_util::term_text;
-use crate::ui::utils::ui_text_util::term_text_line;
 
 
 //-////////////////////////////////////////////////////////////////////////////
@@ -199,27 +187,6 @@ impl Listable for LibraryFilterEntry {
     }
 }
 
-impl ListRenderable for LibraryFilterEntry {
-    fn render<B: Backend>(self, frame: &mut Frame<B>, area: Rect, is_active: bool, is_selected: bool) {
-        let style = match (is_active, is_selected) {
-            (true , true ) => Some(Style::default().fg(Color::Rgb(0, 0, 0)).bg(Color::Cyan)),
-            (false, true ) => Some(Style::default().fg(Color::Black       ).bg(Color::Red )),
-            (true , false) => None,
-            (false, false) => None,
-        };
-
-        let name = term_text_line(area.width as usize, " ", self.name(), " ");
-
-        frame.render_widget(
-            match style {
-                Some(style) => Paragraph::new(Span::raw(name)).style(style),
-                None        => Paragraph::new(Span::raw(name)),
-            },
-            area,
-        )
-    }
-}
-
 //-////////////////////////////////////////////////////////////////////////////
 //  Track Entry
 //-////////////////////////////////////////////////////////////////////////////
@@ -294,86 +261,6 @@ impl Listable for LibraryTrackEntry {
         match self {
             LibraryTrackEntry::Album(_) => false,
             LibraryTrackEntry::Track(_) => true,
-        }
-    }
-}
-
-impl ListRenderable for LibraryTrackEntry {
-    fn render<B: Backend>(self, frame: &mut Frame<B>, area: Rect, is_active: bool, is_selected: bool) {
-        match self {
-            LibraryTrackEntry::Album(album) => {
-                let album_name = album.name.to_string();
-                let year       = album.year.map(|y| y.to_string()).unwrap_or("----".to_string());
-
-                let album_name = format!(" {} ", album_name);
-                let year       = format!(" {} ", year);
-
-                let dyn_len = area.width as usize
-                    - album_name.len()
-                    - year.len();
-                let line = vec!["⎯"; dyn_len].join("");
-
-                let fg2 = Color::Cyan;
-                let style_c = Style::default().fg(fg2);
-
-                let line = Paragraph::new(Spans::from(vec![
-                    Span::raw(album_name),
-                    Span::styled(line, style_c),
-                    Span::raw(year),
-                ])).style(Style::default().add_modifier(Modifier::BOLD));
-
-                frame.render_widget(line, area)
-            },
-            LibraryTrackEntry::Track(track) => {
-                let num = format!("  {:02} ", track.track.unwrap_or(0));
-                let name = track.track_name.to_string();
-                let duration = {
-                    let dur = track.duration.as_secs();
-                    let seperate = |time: u64| (time % 60, time / 60);
-                    match dur {
-                        ..=3599 => {
-                            let (seconds, minutes) = seperate(dur);
-                            format!(" {:02}:{:02}  ", minutes, seconds)
-                        },
-                        3600.. => {
-                            let (seconds, minutes) = seperate(dur);
-                            let (minutes, hours  ) = seperate(minutes);
-                            format!(" {:02}:{:02}:{:02}  ", hours, minutes, seconds)
-                        },
-                    }
-                };
-
-                let dyn_lenght = area.width as usize
-                    - num.len()
-                    - duration.len();
-                let name = term_text(name, dyn_lenght);
-
-                let bg = match (is_active, is_selected) {
-                    (true , true ) => Some(Color::Cyan),
-                    (false, true ) => Some(Color::Red ),
-                    (true , false) => None,
-                    (false, false) => None,
-                };
-                let fg2 = match (is_active, is_selected) {
-                    (true , true ) => Color::Black      ,
-                    (false, true ) => Color::Black      ,
-                    (true , false) => Color::LightYellow,
-                    (false, false) => Color::Yellow     ,
-                };
-                let style_y = Style::default().fg(fg2);
-
-                let line = Paragraph::new(Spans::from(vec![
-                    Span::styled(num, style_y),
-                    Span::raw(name),
-                    Span::styled(duration, style_y),
-                ]));
-                let line = match bg {
-                    Some(bg) => line.style(Style::default().bg(bg)),
-                    None     => line,
-                };
-
-                frame.render_widget(line, area)
-            },
         }
     }
 }

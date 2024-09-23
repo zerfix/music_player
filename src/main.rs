@@ -41,6 +41,7 @@ mod ui {
 }
 mod types {
     pub mod config;
+    pub mod types_tui;
     pub mod types_library_entry;
     pub mod types_msg_channels;
 }

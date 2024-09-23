@@ -1,16 +1,13 @@
 use crossterm::execute;
+use crossterm::style::Print;
 use crossterm::terminal;
-use tui::layout::Rect;
+use crossterm::event;
+use crossterm::cursor;
 use std::io::stdout;
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
-use tui::Frame;
-use tui::Terminal;
-use tui::backend::Backend;
-use tui::backend::CrosstermBackend;
-use tui::layout::Constraint;
-use tui::layout::Direction;
-use tui::layout::Layout;
+use crate::types::types_tui::TermSize;
+use crate::types::types_tui::TermState;
 use crate::MsgChannels;
 use crate::tasks::listener_state::StateActions;
 use crate::ui::views::view_library::RenderDataViewLibrary;
@@ -34,7 +31,6 @@ pub enum RenderActions {
 #[derive(Debug)]
 pub struct RenderDataCommon {
     pub is_scanning: bool,
-    pub term_size: Rect,
 }
 
 #[derive(Debug)]
@@ -53,26 +49,38 @@ pub fn start_tui_listener(rx: Receiver<RenderActions>, tx: MsgChannels) {
     execute!(
         stdout,
         terminal::EnterAlternateScreen,
-        crossterm::event::EnableMouseCapture,
+        event::EnableMouseCapture,
+        cursor::Hide,
     ).unwrap();
 
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let mut term_state = TermState::new();
 
     // -- Render Loop -----------------------------------------------
     info!("Running tui render loop");
     while let Ok(msg) = rx.recv() {
         match msg {
             RenderActions::RenderRequest{render_start} => {
-                let term_size: Rect = terminal.size().unwrap();
+                let term_size = TermSize::new().unwrap();
                 tx_state.send(StateActions::Render{render_start, term_size}).unwrap()
             },
             RenderActions::RenderFrame{render_start, common, view} => {
-                execute!(terminal.backend_mut(), terminal::BeginSynchronizedUpdate).unwrap();
-                if let Err(err) = terminal.draw(|frame| render_tui(common, view, frame)) {
-                    error!("Render error: {:?}", err)
+                let term_size = TermSize::new().unwrap();
+
+                match view {
+                    RenderDataView::Library(view) => draw_library_view(&mut term_state, term_size, view),
                 }
-                execute!(terminal.backend_mut(), terminal::EndSynchronizedUpdate).unwrap();
+
+                execute!(
+                    stdout,
+                    terminal::BeginSynchronizedUpdate,
+                    terminal::Clear(terminal::ClearType::All),
+                    cursor::MoveTo(0,0),
+                    Print(term_state.output()),
+                    terminal::EndSynchronizedUpdate,
+                ).unwrap();
+
+                term_state.clear();
+
                 info!("Render_time: {:?}", render_start.elapsed().unwrap());
             },
             RenderActions::Exit => {
@@ -81,14 +89,12 @@ pub fn start_tui_listener(rx: Receiver<RenderActions>, tx: MsgChannels) {
                     error!("Disable raw terminal mode error: {:?}", err);
                 };
                 if let Err(err) = execute!(
-                    terminal.backend_mut(),
+                    stdout,
                     terminal::LeaveAlternateScreen,
-                    crossterm::event::DisableMouseCapture,
+                    event::DisableMouseCapture,
+                    cursor::Show,
                 ) {
                     error!("Reset terminal error: {:?}", err);
-                };
-                if let Err(err) = terminal.show_cursor() {
-                    error!("Reset terminal cursor error: {:?}", err);
                 };
                 break;
             }
@@ -96,21 +102,6 @@ pub fn start_tui_listener(rx: Receiver<RenderActions>, tx: MsgChannels) {
     }
 
     tx_exit.send(()).unwrap();
-}
-//-////////////////////////////////////////////////////////////////////////////
-pub fn render_tui<B: Backend>(common: RenderDataCommon, view: RenderDataView, frame: &mut Frame<B>) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(0)
-        .constraints([
-            Constraint::Percentage(100),
-        ])
-        .split(frame.size());
-
-    match view {
-        RenderDataView::Library(view) => draw_library_view(frame, chunks[0], common, view),
-    };
-
 }
 //-////////////////////////////////////////////////////////////////////////////
 //

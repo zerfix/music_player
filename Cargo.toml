@@ -3,6 +3,10 @@ name = "music_player"
 version = "0.1.0"
 edition = "2021"
 
+[profile.dev]
+opt-level = 1
+lto = "thin"
+
 [profile.release]
 codegen-units = 1
 lto = true
@@ -12,7 +16,7 @@ color-eyre = "0.6.3"
 # arc-swap = "1.5.1"
 lofty = "0.21.1"
 # chrono = "0.4.23"
-crossterm = "0.27.0"
+crossterm = "0.28.1"
 dirs = "5.0.0"
 enum-iterator = "2.1.0"
 # itertools = "0.10.5"
@@ -24,7 +28,6 @@ static_init = "1.0.3"
 tracing = "0.1.37"
 # tracing-appender = "0.2.2"
 tracing-subscriber = "0.3.16"
-tui = { version = "0.19", features = ['crossterm'], default-features = false }
 rayon = "1.10.0"
 #itertools = "0.13.0"
 unicode-width = "0.1.13"
