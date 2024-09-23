@@ -1,17 +1,18 @@
-use color_eyre::Result;
-use awedio::Sound;
 use awedio::backends::CpalBackend;
 use awedio::manager::Manager;
+use awedio::Sound;
 use awedio::sounds::MemorySound;
 use awedio::sounds::open_file;
+use awedio::sounds::wrappers::CompletionNotifier;
 use awedio::sounds::wrappers::Controller;
 use awedio::sounds::wrappers::Pausable;
+use color_eyre::Result;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
-use std::thread::JoinHandle;
 use std::thread;
+use std::thread::JoinHandle;
 use std::time::Duration;
 use crate::types::types_msg_channels::MsgChannels;
 use crate::tasks::listener_state::StateActions;
@@ -74,7 +75,7 @@ pub fn start_playback_listener(rx: Receiver<PlaybackActions>, tx: MsgChannels) {
 struct PlaybackManager {
     manager: Manager,
     backend: CpalBackend,
-    current_controller: Option<Controller<Pausable<MemorySound>>>,
+    current_controller: Option<Controller<Pausable<CompletionNotifier<MemorySound>>>>,
     current_notifier: Option<JoinHandle<()>>,
     que: VecDeque::<MemorySound>
 }
@@ -91,19 +92,23 @@ impl PlaybackManager {
         })
     }
 
-    pub fn clear(&mut self) {
-        info!("stopping playback");
+    pub fn stop(&mut self) {
         if let Some(controller) = &mut self.current_controller {
             controller.set_paused(true);
         }
         self.current_controller = None;
         self.current_notifier   = None;
+    }
+
+    pub fn clear(&mut self) {
+        self.stop();
         self.que.clear();
     }
 
     pub fn que(&mut self, path: &Path) -> Result<()> {
+        info!("quing track {:?}", path);
         let sound = open_file(path)?.into_memory_sound()?;
-        self.que.push_front(sound);
+        self.que.push_back(sound);
         Ok(())
     }
 
@@ -113,29 +118,26 @@ impl PlaybackManager {
         start_at: Option<Duration>,
     ) {
         if let Some(sound) = self.que.front() {
-            let (sound, controller) = sound.clone()
+            let (sound, notifier) = sound.clone()
+                .with_completion_notifier();
+            let (mut sound, controller) = sound
                 .pausable()
                 .controllable();
-            let (mut sound, notifier) = sound
-                .with_completion_notifier();
 
             if let Some(duration) = start_at {
                 let _ = sound.skip(duration);
             }
 
+            if self.current_controller.is_some() {self.stop()}
+            self.manager.play(Box::new(sound));
+
             let notifier = thread::spawn(move || {
-                info!("Listening to notifier");
                 notifier.recv().unwrap();
-                info!("Notifier callback ok");
-                if let Err(err) = tx_playback.send(PlaybackActions::Callback) {
-                    warn!("{:?}", err);
-                };
+                tx_playback.send(PlaybackActions::Callback).unwrap();
             });
 
-            if self.current_controller.is_some() {self.clear();}
             self.current_controller = Some(controller);
             self.current_notifier = Some(notifier);
-            self.manager.play(Box::new(sound));
         }
     }
 
