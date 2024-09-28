@@ -18,6 +18,36 @@ pub fn start_fs_scanner_listener(tx: MsgChannels) {
     }
 }
 
+// from: https://github.com/Serial-ATA/lofty-rs/blob/aa1ec31ea6f2d6f08cc034cea6aad50923fc5f07/lofty/src/file/file_type.rs#L130
+const EXTENSIONS: [&'static str; 26] = [
+    "aac",
+    "ape",
+    "aiff",
+    "aif",
+    "afc",
+    "aifc",
+    "mp3",
+    "mp2",
+    "mp1",
+    "wav",
+    "wave",
+    "wv",
+    "opus",
+    "flac",
+    "ogg",
+    "mp4",
+    "m4a",
+    "m4b",
+    "m4p",
+    "m4r",
+    "m4v",
+    "3gp",
+    "mpc",
+    "mp+",
+    "mpp",
+    "spx",
+];
+
 fn scanner_loop(tx: &MsgChannels) -> Result<()> {
     let tx_state = &tx.tx_state;
 
@@ -33,6 +63,7 @@ fn scanner_loop(tx: &MsgChannels) -> Result<()> {
         )
         .map(|entry| entry.path())
         .filter(|path| path.is_file())
+        .filter(|path| EXTENSIONS.contains(&path.extension().unwrap_or_default().to_str().unwrap_or_default()))
         .for_each(|path| match TrackFile::new(&path) {
             Ok(track) => tx_state.send(StateActions::ScanAddSong{track}).unwrap(),
             Err(e) => error!("Parse track error: {:?} {:?}", path, e),
