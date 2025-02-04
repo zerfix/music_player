@@ -57,17 +57,17 @@ impl AppState {
 
         let common = RenderDataCommon{
             is_scanning: self.interface.is_scanning,
+            playlist   : self.playlist.clone(),
         };
 
-        let (left ,  left_selected) = self.library.list_filter.view(self.term_size.height);
-        let (right, right_selected) = self.library.list_tracks.view(self.term_size.height);
-        let right = right.into_iter().map(|e| e.to_track_entry()).collect::<Vec<_>>();
+        let (left ,  left_selected) = self.library.list_filter.view(self.term_size.height.saturating_sub(1));
+        let (right, right_selected) = self.library.list_tracks.view(self.term_size.height.saturating_sub(1));
 
         let view = RenderDataView::Library(
             RenderDataViewLibrary{
                 column_selected: self.library.selected_column,
                 tabs: vec![LibraryTab::Artists],
-                tabs_selected: LibraryTab::Artists,
+                tab_selected: self.library.selected_tab,
                 left,
                 left_selected,
                 right,

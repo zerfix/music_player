@@ -1,13 +1,15 @@
+use color_eyre::eyre::eyre;
+use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use lofty::file::AudioFile;
 use lofty::file::TaggedFileExt;
 use lofty::tag::Accessor;
 use std::cmp::Ordering;
-use std::hash::Hash;
 use std::path::Path;
 use std::time::Duration;
 use lofty::read_from_path;
 use lofty::prelude::ItemKey;
+use arrayvec::ArrayString;
 use crate::functions::functions_hash::hash;
 use crate::traits::trait_listable::Listable;
 
@@ -15,23 +17,22 @@ use crate::traits::trait_listable::Listable;
 //-////////////////////////////////////////////////////////////////////////////
 //  Raw Entry
 //-////////////////////////////////////////////////////////////////////////////
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 #[derive(Debug)]
 pub struct TrackFile {
     /// for treating element as a album header in library view
     pub is_album_padding: bool,
     pub id_artist   : u64,
     pub id_album    : u64,
-    pub id_track    : u64,
-    pub path        : Box<Path>,
+    pub id_track    : u64, // hash of file path
 
     pub duration     : Duration,
     pub year         : Option<u16>,
-    pub album_artist : Option<Box<str>>,
-    pub album_title  : Option<Box<str>>,
+    pub album_artist : Option<ArrayString<64>>,
+    pub album_title  : Option<ArrayString<64>>,
     pub album_number : Option<u8>,
-    pub track_artist : Option<Box<str>>,
-    pub track_title  : Option<Box<str>>,
+    pub track_artist : Option<ArrayString<64>>,
+    pub track_title  : ArrayString<128>,
     pub track_number : Option<u8>,
 }
 
@@ -40,19 +41,23 @@ impl TrackFile {
         let file = read_from_path(path)?;
 
         let properties = file.properties();
-        let primary = file.primary_tag().unwrap();
+        let primary = file.primary_tag().ok_or_eyre(eyre!("primary tags not found"))?;
 
         let duration = properties.duration();
-        let year     = primary.year().map(|n| n as u16);
+        let year     = primary.year().map(|y| y as u16);
 
-        let track_artist = primary.artist().map(|s| s.into_owned().into_boxed_str()).filter(|s| !s.is_empty());
-        let track_title  = primary.title().map(|s| s.into_owned().into_boxed_str()).filter(|s| !s.is_empty());
-        let track_number = primary.track().map(|n| n as u8);
+        let track_artist = primary.artist().map(String::from).filter(|s| !s.is_empty());
+        let track_title  = primary.title() .map(String::from).filter(|s| !s.is_empty()).ok_or_eyre(eyre!("missing track name"))?;
+        let track_number = primary.track().map(|t| t as u8);
 
-        let album_artist = primary.get_string(&ItemKey::AlbumArtist).map(|s| s.to_owned().into_boxed_str()).filter(|s| !s.is_empty());
-        let album_artist = album_artist.or(track_artist.clone());
-        let album_title  = primary.album().map(|s| s.into_owned().into_boxed_str()).filter(|s| !s.is_empty());
+        let album_artist = primary.get_string(&ItemKey::AlbumArtist).filter(|s| !s.is_empty());
+        let album_artist = album_artist.map(String::from).or(track_artist.clone());
+        let album_title  = primary.album().filter(|s| !s.is_empty());
         let album_number = primary.disk().map(|n| n as u8);
+
+        if track_artist == Some("Caravan Palace".to_string()) {
+            info!("track_artist: {:?}, album_artist: {:?}", &track_artist, &album_artist);
+        }
 
         let id_artist = {
             let artist = album_artist.clone().unwrap_or_default().to_lowercase();
@@ -67,14 +72,16 @@ impl TrackFile {
 
         let id_track = hash(path.to_str().unwrap().to_lowercase().as_bytes());
 
-        let path = path.to_owned().into_boxed_path();
+        let album_artist = album_artist.map(|aa| TrackFile::truncate_names(&aa));
+        let album_title  = album_title.map(|at| TrackFile::truncate_names(&at));
+        let track_artist = track_artist.map(|ta| TrackFile::truncate_names(&ta));
+        let track_title  = TrackFile::truncate_names(&track_title);
 
         Ok(TrackFile{
             is_album_padding: false,
             id_artist,
             id_album,
             id_track,
-            path,
 
             duration,
             year,
@@ -87,26 +94,26 @@ impl TrackFile {
         })
     }
 
-    pub fn to_track_entry(&self) -> LibraryTrackEntry {
-        match self.is_album_padding {
-            true => LibraryTrackEntry::Album(LibraryAlbumEntryData{
-                id  : self.id_album,
-                name: self.album_title.clone().unwrap_or("<missing>".to_owned().into_boxed_str()),
-                year: self.year,
-            }),
-            false => LibraryTrackEntry::Track(LibraryTrackEntryData{
-                year        : self.year,
-                album_artist: self.album_artist.clone(),
-                album_name  : self.album_title.clone().unwrap_or("<missing>".to_owned().into_boxed_str()),
-                id          : self.id_track,
-                disc        : self.album_number,
-                track       : self.track_number,
-                track_artist: self.track_artist.clone(),
-                track_name  : self.track_title.clone().unwrap_or(self.path.to_str().unwrap().to_owned().into_boxed_str()),
-                duration    : self.duration,
-                path        : self.path.clone(),
-            })
+    fn truncate_names<const L: usize>(text: &str) -> ArrayString<L> {
+        let mut arr = ArrayString::<L>::new();
+        if text.len() > L {
+            arr.push_str(&text[..L-1]);
+            arr.push_str(">");
+        } else {
+            arr.push_str(&text[..L.min(text.len())]);
         }
+        arr
+    }
+
+    fn compare_values(&self) -> (Option<u16>, Option<String>, Option<String>, Option<u8>, bool, Option<u8>) {
+        (
+            self.year,
+            self.album_artist.map(|s| s.to_lowercase()),
+            self.album_title.map(|s| s.to_lowercase()),
+            self.album_number,
+            !self.is_album_padding,
+            self.track_number,
+        )
     }
 }
 
@@ -118,19 +125,7 @@ impl Listable for TrackFile {
 
 impl PartialOrd for TrackFile {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some((
-            self.year,
-            &self.album_title,
-            self.album_number,
-            !self.is_album_padding,
-            self.track_number,
-        ).cmp(&(
-            other.year,
-            &other.album_title,
-            other.album_number,
-            !other.is_album_padding,
-            other.track_number,
-        )))
+        Some(self.compare_values().cmp(&other.compare_values()))
     }
 }
 
@@ -148,20 +143,61 @@ impl PartialEq for TrackFile {
 
 impl Eq for TrackFile { }
 
-impl Hash for TrackFile {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.path.hash(state);
-    }
-}
 //-////////////////////////////////////////////////////////////////////////////
 //  Filter Entry
 //-////////////////////////////////////////////////////////////////////////////
-#[derive(Clone)]
+#[derive(Clone, Copy)]
+#[derive(Debug)]
+pub struct LibraryArtistEntry {
+    pub artist_id: u64,
+    pub name_compare: Option<ArrayString<64>>,
+    pub name_display: Option<ArrayString<64>>,
+}
+
+impl LibraryArtistEntry {
+    pub fn from_track(track: TrackFile) -> LibraryArtistEntry {
+        LibraryArtistEntry{
+            artist_id: track.id_artist,
+            name_display: track.album_artist,
+            name_compare: track.album_artist.map(|aa| {
+                let lower = aa.to_lowercase();
+                let mut arr = ArrayString::new();
+                match lower.starts_with("the ") {
+                    true => arr.push_str(&lower[4..]),
+                    false => arr.push_str(&lower),
+                };
+                arr
+            })
+        }
+    }
+}
+
+impl PartialEq for LibraryArtistEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.artist_id == other.artist_id
+    }
+}
+
+impl Eq for LibraryArtistEntry {}
+
+impl PartialOrd for LibraryArtistEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.name_compare.cmp(&other.name_compare))
+    }
+}
+
+impl Ord for LibraryArtistEntry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.name_compare.cmp(&other.name_compare)
+    }
+}
+
+#[derive(Clone, Copy)]
 #[derive(Debug)]
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub enum LibraryFilterEntry {
     All,
-    Artist{name: Option<Box<str>>},
+    Artist(LibraryArtistEntry),
     Year{year: Option<u16>},
 }
 
@@ -169,7 +205,7 @@ impl LibraryFilterEntry {
     pub fn name(&self) -> String {
         match self {
             LibraryFilterEntry::All => "ALL".to_string(),
-            LibraryFilterEntry::Artist { name } => match name {
+            LibraryFilterEntry::Artist(artist) => match artist.name_display {
                 Some(name) => name.to_string(),
                 None       => "<missing>".to_string(),
             },
@@ -186,159 +222,6 @@ impl Listable for LibraryFilterEntry {
         true
     }
 }
-
-//-////////////////////////////////////////////////////////////////////////////
-//  Track Entry
-//-////////////////////////////////////////////////////////////////////////////
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq, Eq)]
-pub enum LibraryTrackEntry {
-    Album(LibraryAlbumEntryData),
-    Track(LibraryTrackEntryData),
-}
-
-impl LibraryTrackEntry {
-    pub fn album_name(&self) -> &str {
-        match self {
-            LibraryTrackEntry::Album(album) => &album.name,
-            LibraryTrackEntry::Track(track) => &track.album_name,
-        }
-    }
-
-    pub fn year(&self) -> Option<u16> {
-        match self {
-            LibraryTrackEntry::Album(album) => album.year,
-            LibraryTrackEntry::Track(track) => track.year,
-        }
-    }
-
-    pub fn is_album(&self) -> bool {
-        match self {
-            LibraryTrackEntry::Album(_) => true,
-            LibraryTrackEntry::Track(_) => false,
-        }
-    }
-}
-
-impl PartialOrd for LibraryTrackEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if let (LibraryTrackEntry::Track(this_track), LibraryTrackEntry::Track(other_track)) = (self, other) {
-            let cmp = (
-                self.album_name(),
-                self.year(),
-                !self.is_album(),
-            ).cmp(&(
-                other.album_name(),
-                other.year(),
-                !other.is_album(),
-            ));
-            if let Ordering::Equal = cmp {
-                return Some(this_track.cmp(other_track))
-            }
-        }
-
-        Some((
-            self.album_name(),
-            self.year(),
-            !self.is_album(),
-        ).cmp(&(
-            other.album_name(),
-            other.year(),
-            !other.is_album(),
-        )))
-    }
-}
-
-impl Ord for LibraryTrackEntry {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
-    }
-}
-
-impl Listable for LibraryTrackEntry {
-    fn is_selectable(&self) -> bool {
-        match self {
-            LibraryTrackEntry::Album(_) => false,
-            LibraryTrackEntry::Track(_) => true,
-        }
-    }
-}
-
-#[derive(Clone)]
-#[derive(Debug)]
-pub struct LibraryAlbumEntryData {
-    pub id: u64,
-    pub name: Box<str>,
-    pub year: Option<u16>,
-}
-
-impl PartialOrd for LibraryAlbumEntryData {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some((self.year, &self.name).cmp(&(other.year, &other.name)))
-    }
-}
-
-impl Ord for LibraryAlbumEntryData {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
-    }
-}
-
-impl PartialEq for LibraryAlbumEntryData {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-impl Eq for LibraryAlbumEntryData {}
-
-#[derive(Clone)]
-#[derive(Debug)]
-pub struct LibraryTrackEntryData {
-    pub id: u64,
-    pub disc: Option<u8>,
-    pub album_artist: Option<Box<str>>,
-    pub album_name: Box<str>,
-    pub track: Option<u8>,
-    pub track_artist: Option<Box<str>>,
-    pub track_name: Box<str>,
-    pub year: Option<u16>,
-    pub duration: Duration,
-    pub path: Box<Path>,
-}
-
-impl Ord for LibraryTrackEntryData {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
-    }
-}
-
-impl PartialOrd for LibraryTrackEntryData {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some((
-            &self.album_artist,
-            self.year,
-            &self.album_name,
-            self.disc,
-            self.track,
-        ).cmp(&(
-            &other.album_artist,
-            other.year,
-            &other.album_name,
-            other.disc,
-            other.track,
-        )))
-    }
-}
-
-impl PartialEq for LibraryTrackEntryData {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-impl Eq for LibraryTrackEntryData { }
 
 //-////////////////////////////////////////////////////////////////////////////
 //

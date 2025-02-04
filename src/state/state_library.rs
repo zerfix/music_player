@@ -1,13 +1,15 @@
 use color_eyre::eyre::eyre;
-use enum_iterator::Sequence;
-use enum_iterator::next_cycle;
-use enum_iterator::previous_cycle;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
+use strum_macros::IntoStaticStr;
 use rayon::prelude::*;
 use std::time::SystemTime;
 use crate::enums::enum_input::InputGlobalEffect;
 use crate::enums::enum_input::InputLocal;
 use crate::enums::enum_input::InputLocalEffect;
 use crate::enums::enum_input::InputEffect;
+use crate::traits::trait_listable::Listable;
+use crate::types::types_library_entry::LibraryArtistEntry;
 use crate::types::types_library_entry::LibraryFilterEntry;
 use crate::types::types_library_entry::TrackFile;
 use crate::ui::models::model_component_list_state::SortedListState;
@@ -28,7 +30,7 @@ pub struct StateLibrary {
 #[derive(Clone, Copy)]
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
-#[derive(Sequence)]
+#[derive(EnumIter, IntoStaticStr)]
 pub enum LibraryTab {
     Artists,
     Year,
@@ -64,10 +66,7 @@ impl<'a> StateLibrary {
             InputLocal::Up     => local(InputLocalEffect::Up(1)),
             InputLocal::Down   => local(InputLocalEffect::Down(1)),
             InputLocal::Left   => local(InputLocalEffect::Left),
-            InputLocal::Right  => match self.selected_column {
-                LibraryColumn::Filter => local(InputLocalEffect::Right),
-                LibraryColumn::Tracks => global(InputGlobalEffect::AppendTrack(self.list_tracks.selected_entry().unwrap().clone())),
-            },
+            InputLocal::Right  => local(InputLocalEffect::Right),
             InputLocal::PgUp   => local(InputLocalEffect::Up(10)),
             InputLocal::PgDown => local(InputLocalEffect::Down(10)),
             InputLocal::Home   => local(InputLocalEffect::Home),
@@ -82,7 +81,7 @@ impl<'a> StateLibrary {
                          Some(entry) => entry,
                     };
                     let tracks = self.list_tracks.entries().iter()
-                        .filter(|t| t.album_artist == entry.album_artist)
+                        .filter(|t| t.is_selectable() && t.album_artist == entry.album_artist)
                         .cloned()
                         .collect::<Vec<TrackFile>>();
                     global(InputGlobalEffect::AppendTracks(tracks))
@@ -96,10 +95,14 @@ impl<'a> StateLibrary {
                          Some(entry) => entry,
                     };
                     let tracks = self.list_tracks.entries().iter()
-                        .filter(|t| t.album_artist == entry.album_artist)
+                        .filter(|t| t.is_selectable() && t.album_artist == entry.album_artist)
                         .cloned()
                         .collect::<Vec<TrackFile>>();
-                    let index = self.list_tracks.selected_index();
+                    let album_offset = self.list_tracks.entries().iter()
+                        .take(self.list_tracks.selected_index())
+                        .filter(|t| !t.is_selectable())
+                        .count();
+                    let index = self.list_tracks.selected_index() - album_offset;
                     global(InputGlobalEffect::ReplaceTracksAndPlay{tracks, index})
                 },
             },
@@ -110,33 +113,39 @@ impl<'a> StateLibrary {
         match self.selected_column {
             LibraryColumn::Filter => {
                 match effect {
-                    InputLocalEffect::Up(steps)   => {
-                        self.list_filter.select_prev(steps);
-                        self.refresh_tracks_list();
-                    },
-                    InputLocalEffect::Down(steps) => {
-                        self.list_filter.select_next(steps);
-                        self.refresh_tracks_list();
-                    },
-                    InputLocalEffect::Left        => {},
-                    InputLocalEffect::Right       => self.selected_column = LibraryColumn::Tracks,
+                    InputLocalEffect::Up(steps)   => self.list_filter.select_prev(steps),
+                    InputLocalEffect::Down(steps) => self.list_filter.select_next(steps),
+                    InputLocalEffect::Left        => {return},
+                    InputLocalEffect::Right       => {self.selected_column = LibraryColumn::Tracks; return},
                     InputLocalEffect::Home        => self.list_filter.select_start(),
                     InputLocalEffect::End         => self.list_filter.select_end(),
-                    InputLocalEffect::NextTab => {
-                        self.selected_tab = next_cycle(&self.selected_tab);
+                    InputLocalEffect::NextTab     => {
+                        self.selected_tab = LibraryTab::iter()
+                            .cycle()
+                            .skip_while(|x| *x != self.selected_tab)
+                            .skip(1)
+                            .next()
+                            .unwrap();
                         self.refresh_filter_list();
                     },
                     InputLocalEffect::PrevTab => {
-                        self.selected_tab = previous_cycle(&self.selected_tab);
+                        self.selected_tab = LibraryTab::iter()
+                            .rev()
+                            .cycle()
+                            .skip_while(|x| *x != self.selected_tab)
+                            .skip(1)
+                            .next()
+                            .unwrap();
                         self.refresh_filter_list();
                     },
                 };
+                self.refresh_tracks_list()
             },
             LibraryColumn::Tracks => match effect {
                 InputLocalEffect::Up(steps)   => self.list_tracks.select_prev(steps),
                 InputLocalEffect::Down(steps) => self.list_tracks.select_next(steps),
-                InputLocalEffect::Left        => self.selected_column = LibraryColumn::Filter,
-                InputLocalEffect::Right       => {},
+                InputLocalEffect::Left        => {self.selected_column = LibraryColumn::Filter; return},
+                InputLocalEffect::Right       => {return},
                 InputLocalEffect::Home        => self.list_tracks.select_start(),
                 InputLocalEffect::End         => self.list_tracks.select_end(),
                 InputLocalEffect::NextTab     => {},
@@ -151,7 +160,7 @@ impl<'a> StateLibrary {
 
         // add to filter list
         let filter = match self.selected_tab {
-            LibraryTab::Artists => LibraryFilterEntry::Artist{name: track.album_artist.clone()},
+            LibraryTab::Artists => LibraryFilterEntry::Artist(LibraryArtistEntry::from_track(track)),
             LibraryTab::Year => LibraryFilterEntry::Year{year: track.year},
         };
         self.list_filter.add(filter);
@@ -159,7 +168,7 @@ impl<'a> StateLibrary {
         // add to track list
         let add_to_track_list = match self.list_filter.selected_entry().ok_or(eyre!("Filter is empty")).unwrap() {
             LibraryFilterEntry::All => true,
-            LibraryFilterEntry::Artist{name} => *name == track.album_artist,
+            LibraryFilterEntry::Artist(artist) => artist.artist_id == track.id_artist,
             LibraryFilterEntry::Year{year} => *year == track.year,
         };
         if add_to_track_list {
@@ -184,7 +193,7 @@ impl<'a> StateLibrary {
             .into_par_iter()
             .chain(self.tracks.par_iter()
             .map(|track| match self.selected_tab {
-                LibraryTab::Artists => LibraryFilterEntry::Artist { name: track.album_artist.clone() },
+                LibraryTab::Artists => LibraryFilterEntry::Artist(LibraryArtistEntry::from_track(*track)),
                 LibraryTab::Year => LibraryFilterEntry::Year { year: track.year },
             }))
             .collect::<Vec<_>>();
@@ -202,7 +211,7 @@ impl<'a> StateLibrary {
             .filter(|track| match self.list_filter.selected_entry() {
                 None => false,
                 Some(LibraryFilterEntry::All) => true,
-                Some(LibraryFilterEntry::Artist{name}) => *name == track.album_artist,
+                Some(LibraryFilterEntry::Artist(album)) => album.artist_id == track.id_artist,
                 Some(LibraryFilterEntry::Year{year}) => *year == track.year,
             })
             .cloned()

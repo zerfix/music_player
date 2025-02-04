@@ -48,10 +48,10 @@ mod types {
 //-////////////////////////////////////////////////////////////////////////////
 
 use color_eyre::Report;
+use crossbeam_channel::bounded;
 use static_init::dynamic;
 use std::fs::File;
 use std::panic;
-use std::sync::mpsc::channel;
 use std::thread;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::prelude::*;
@@ -93,10 +93,10 @@ fn main() -> Result<(), Report> {
 
     // -- Create Channels -------------------------------------------
     info!("Creating channels...");
-    let (tx_exit    , rx_exit    ) = channel();
-    let (tx_playback, rx_playback) = channel();
-    let (tx_state   , rx_state   ) = channel();
-    let (tx_tui     , rx_tui     ) = channel();
+    let (tx_exit    , rx_exit    ) = bounded(1);
+    let (tx_playback, rx_playback) = bounded(16);
+    let (tx_state   , rx_state   ) = bounded(256);
+    let (tx_tui     , rx_tui     ) = bounded(1);
 
     let channels = || MsgChannels{
         tx_exit    : tx_exit.clone(),

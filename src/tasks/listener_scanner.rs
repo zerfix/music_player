@@ -1,12 +1,15 @@
 use color_eyre::Result;
-use jwalk::WalkDir;
-use rayon::prelude::*;
+use std::path::PathBuf;
 use std::time::SystemTime;
 use crate::tasks::listener_state::StateActions;
 use crate::tasks::listener_tui::RenderActions;
+use crate::tasks::listener_playback::PlaybackActions;
 use crate::types::types_library_entry::TrackFile;
 use crate::types::types_msg_channels::MsgChannels;
 use crate::CONFIG;
+use std::fs;
+use rayon::Scope;
+use rayon::ThreadPoolBuilder;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -48,26 +51,51 @@ const EXTENSIONS: [&'static str; 26] = [
     "spx",
 ];
 
+fn scan_directory(scope: &Scope, dir: PathBuf, tx: MsgChannels) {
+    if let Ok(dir) = fs::read_dir(dir) {
+        for entry in dir.into_iter().filter_map(|e| e.ok()) {
+            let path = entry.path();
+
+            if path.is_dir() {
+                if path.file_name().unwrap().to_string_lossy().starts_with(".") {
+                    continue;
+                }
+                let tx = tx.clone();
+                scope.spawn(move |scope| scan_directory(scope, path, tx));
+                continue;
+            }
+            if path.is_file() {
+                let extention = path.extension().unwrap_or_default().to_str().unwrap_or_default();
+                if EXTENSIONS.contains(&extention) {
+                    let tx_state = tx.tx_state.clone();
+                    let tx_playback = tx.tx_playback.clone();
+                    scope.spawn(move |_| match TrackFile::new(&path) {
+                        Ok(track) => {
+                            tx_state.send(StateActions::ScanAddSong{track}).unwrap();
+                            tx_playback.send(PlaybackActions::NewTrack{track_id: track.id_track, path: path.into_boxed_path()}).unwrap();
+                        },
+                        Err(e) => error!("Parse track error: {:?} {:?}", path, e),
+                    });
+                }
+                continue;
+            }
+        }
+    }
+}
+
 fn scanner_loop(tx: &MsgChannels) -> Result<()> {
-    let tx_state = &tx.tx_state;
+    let tx_state    = &tx.tx_state;
 
     tx_state.send(StateActions::ScanIsScanning { is_scanning: true })?;
     info!("Starting scan of '{:?}'", CONFIG.media_dirs);
     let time = SystemTime::now();
 
-    CONFIG.media_dirs.par_iter()
-        .flat_map(|dir| WalkDir::new(dir)
-            .into_iter()
-            .filter_map(Result::ok)
-            .par_bridge()
-        )
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file())
-        .filter(|path| EXTENSIONS.contains(&path.extension().unwrap_or_default().to_str().unwrap_or_default()))
-        .for_each(|path| match TrackFile::new(&path) {
-            Ok(track) => tx_state.send(StateActions::ScanAddSong{track}).unwrap(),
-            Err(e) => error!("Parse track error: {:?} {:?}", path, e),
-        });
+    ThreadPoolBuilder::new().build().unwrap().scope(|scope: &Scope| {
+        for dir in CONFIG.media_dirs.iter() {
+            let tx = tx.clone();
+            scope.spawn(|scope| scan_directory(scope, dir.clone(), tx));
+        }
+    });
 
     info!("scan of all directories took: {:?}", SystemTime::now().duration_since(time)?);
 

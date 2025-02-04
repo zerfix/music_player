@@ -9,18 +9,21 @@ use awedio::sounds::wrappers::Pausable;
 use color_eyre::Result;
 use std::collections::VecDeque;
 use std::path::Path;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
+use crossbeam_channel::Receiver;
+use crossbeam_channel::Sender;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
+use std::collections::BTreeMap;
+use crate::types::types_library_entry::TrackFile;
 use crate::types::types_msg_channels::MsgChannels;
 use crate::tasks::listener_state::StateActions;
 
 //-//////////////////////////////////////////////////////////////////
 pub enum PlaybackActions {
-    Play{path: Box<Path>, start_at: Option<Duration>},
-    Que{path: Box<Path>},
+    NewTrack{track_id: u64, path: Box<Path>},
+    Play{track: TrackFile, start_at: Option<Duration>},
+    Que{track: TrackFile},
     Pause,
     Resume,
     /// duration from start of track
@@ -34,17 +37,49 @@ pub fn start_playback_listener(rx: Receiver<PlaybackActions>, tx: MsgChannels) {
     let tx_state = tx.tx_state;
     let tx_playback = tx.tx_playback;
     let mut state = PlaybackManager::new().unwrap();
+    let mut tracks: BTreeMap<u64, Box<Path>> = BTreeMap::new();
 
     while let Ok(msg) = rx.recv() {
         match msg {
-            PlaybackActions::Play { path, start_at } => {
+            PlaybackActions::NewTrack{track_id, path} => {
+                tracks.insert(track_id, path);
+            },
+            PlaybackActions::Play { track, start_at } => {
+                let path = match tracks.get(&track.id_track) {
+                    Some(path) => path,
+                    None => {
+                        error!(
+                            "Could not find path for track: {:?} {:?} {:?} {:?}, id: {}",
+                            track.album_artist,
+                            track.album_title,
+                            track.track_number,
+                            track.track_title,
+                            track.id_track,
+                        );
+                        continue;
+                    },
+                };
                 if let Err(err) = state.que(&path) {
                     tx_state.send(StateActions::PlaybackNextTrack{error: Some(err)}).unwrap();
                     continue;
                 }
                 state.start(tx_playback.clone(), start_at);
             },
-            PlaybackActions::Que { path } => {
+            PlaybackActions::Que { track } => {
+                let path = match tracks.get(&track.id_track) {
+                    Some(path) => path,
+                    None => {
+                        error!(
+                            "Could not find path for track: {:?} {:?} {:?} {:?}, id: {}",
+                            track.album_artist,
+                            track.album_title,
+                            track.track_number,
+                            track.track_title,
+                            track.id_track,
+                        );
+                        continue;
+                    },
+                };
                 if let Err(err) = state.que(&path) {
                     tx_state.send(StateActions::PlaybackNextTrack{error: Some(err)}).unwrap()
                 }
@@ -64,6 +99,7 @@ pub fn start_playback_listener(rx: Receiver<PlaybackActions>, tx: MsgChannels) {
             },
             PlaybackActions::Next => {
                 state.next(tx_playback.clone());
+                tx_state.send(StateActions::PlaybackNextTrack { error: None }).unwrap();
             },
             PlaybackActions::Clear => {
                 state.clear();

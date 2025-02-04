@@ -1,6 +1,6 @@
 use color_eyre::Result;
 use color_eyre::Report;
-use std::sync::mpsc::Receiver;
+use crossbeam_channel::Receiver;
 use std::time::SystemTime;
 use crate::enums::enum_input::InputGlobalEffect;
 use crate::enums::enum_input::InputEffect;
@@ -22,7 +22,11 @@ pub enum StateActions {
     PlaybackNextTrack{error: Option<Report>},
     ScanIsScanning{is_scanning: bool}, // used to show user if scanning on startup
     ScanAddSong{track: TrackFile},
-    Render{render_start: SystemTime, term_size: TermSize},
+    Render{
+        render_target: SystemTime,
+        render_start: SystemTime,
+        render_request: SystemTime,
+        term_size: TermSize},
     Exit,
 }
 
@@ -54,13 +58,13 @@ fn state_loop(rx: Receiver<StateActions>, tx: MsgChannels) -> Result<()> {
                                 tx_playback.send(PlaybackActions::Clear).unwrap();
                                 if let Some(track) = playlist.get_current_track() {
                                     tx_playback.send(PlaybackActions::Play {
-                                        path: track.path.clone(),
+                                        track,
                                         start_at: None,
                                     }).unwrap();
                                 }
                                 if let Some(track) = playlist.get_next_track() {
                                     tx_playback.send(PlaybackActions::Que {
-                                        path: track.path.clone(),
+                                        track,
                                     }).unwrap();
                                 }
                             },
@@ -75,9 +79,25 @@ fn state_loop(rx: Receiver<StateActions>, tx: MsgChannels) -> Result<()> {
             StateActions::InputGlobal(input) => {
                 state.mutate(|_, _, playlist| {
                     match input {
-                        InputGlobal::PlayPause => {todo!()},
-                        InputGlobal::Previous => {todo!()},
-                        InputGlobal::Next => {todo!()},
+                        InputGlobal::PlayPause => {},
+                        InputGlobal::Previous => {
+                            playlist.previous();
+                            tx_playback.send(PlaybackActions::Clear).unwrap();
+                            if let Some(track) = playlist.get_current_track() {
+                                tx_playback.send(PlaybackActions::Play {
+                                    track,
+                                    start_at: None,
+                                }).unwrap();
+                            }
+                            if let Some(track) = playlist.get_next_track() {
+                                tx_playback.send(PlaybackActions::Que {
+                                    track,
+                                }).unwrap();
+                            }
+                        },
+                        InputGlobal::Next => {
+                            tx_playback.send(PlaybackActions::Next).unwrap();
+                        },
                         InputGlobal::Stop => {
                             info!("stopping state");
                             playlist.clear();
@@ -92,7 +112,7 @@ fn state_loop(rx: Receiver<StateActions>, tx: MsgChannels) -> Result<()> {
                 state.mutate(|_, _, playlist| {
                     playlist.next();
                     if let Some(track) = playlist.get_next_track() {
-                        tx_playback.send(PlaybackActions::Que{path: track.path.clone()}).unwrap();
+                        tx_playback.send(PlaybackActions::Que{track}).unwrap();
                     }
                 });
             },
@@ -107,9 +127,16 @@ fn state_loop(rx: Receiver<StateActions>, tx: MsgChannels) -> Result<()> {
                     info!("{} tracks", library.tracks.len());
                 })
             },
-            StateActions::Render{render_start, term_size} => {
+            StateActions::Render{render_target, render_start, render_request, term_size} => {
                 if let Some((common, view)) = state.render_state(false, term_size) {
-                    tx_tui.send(RenderActions::RenderFrame{render_start, common, view}).unwrap();
+                    tx_tui.send(RenderActions::RenderFrame{
+                        render_target,
+                        render_start,
+                        render_request,
+                        render_state: SystemTime::now(),
+                        common,
+                        view,
+                    }).unwrap();
                 }
             },
             StateActions::Exit => break,

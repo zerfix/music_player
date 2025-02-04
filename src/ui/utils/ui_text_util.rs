@@ -5,22 +5,31 @@ use unicode_width::UnicodeWidthStr;
 //
 //-//////////////////////////////////////////////////////////////////
 pub fn term_text(mut buf: String, length: usize) -> String {
-    let offset = length as isize - buf.width() as isize;
-
-    if offset < 0 {
-        buf.push_str("...");
-        loop {
-            if buf.width() <= length {
-                break;
+    if length < buf.width() {
+        match (length, buf.len()) {
+            (0, _) => buf = "".to_string(),
+            (1, 1) => (),
+            (1, _) => buf = " ".to_string(),
+            (2, 0) => buf = "  ".to_string(),
+            (2, 1) => buf.push_str(" "),
+            (2, 2) => (),
+            (2, _) => buf = "..".to_string(),
+            (_, _) => {
+               buf.push_str("...");
+               while buf.width() > length {
+                   buf.pop();
+                   buf.pop();
+                   buf.pop();
+                   buf.pop();
+                   buf.push_str("...");
+               }
+               while buf.width() < length {
+                   buf.push_str(" ");
+               }
             }
-            buf.pop();
-            buf.pop();
-            buf.pop();
-            buf.pop();
-            buf.push_str("...");
         }
     } else
-    if offset > 0 {
+    if length > buf.width() {
         while buf.width() < length {
             buf.push(' ');
         }
@@ -50,42 +59,66 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
+    struct TextTest {
+        pub reference: &'static str,
+        pub ref_len: usize,
+        pub tests: Vec<TextTestGroup>,
+    }
+
+    struct TextTestGroup {
+        pub target_len: usize,
+        pub result: &'static str,
+    }
+
     #[test]
     fn test_ui_text_len() {
-        let text_en = "xXx yYy zZz".to_string();
-        let text_jp = "平仮名, ひらがな".to_string();
-
-        assert_eq!([
-            term_text(text_en.clone(), 10),
-            term_text(text_en.clone(), 11),
-            term_text(text_en.clone(), 12),
-            term_text(text_jp.clone(), 15),
-            term_text(text_jp.clone(), 16),
-            term_text(text_jp.clone(), 17),
-        ],[
-            "xXx yYy...".to_string(),
-            "xXx yYy zZz".to_string(),
-            "xXx yYy zZz ".to_string(),
-            "平仮名, ひら...".to_string(),
-            "平仮名, ひらがな".to_string(),
-            "平仮名, ひらがな ".to_string(),
-        ]);
-
-        assert_eq!([
-            term_text(text_en.clone(), 10).width(),
-            term_text(text_en.clone(), 11).width(),
-            term_text(text_en.clone(), 12).width(),
-            term_text(text_jp.clone(), 15).width(),
-            term_text(text_jp.clone(), 16).width(),
-            term_text(text_jp.clone(), 17).width(),
-        ],[
-            10,
-            11,
-            12,
-            15,
-            16,
-            17,
-        ]);
+        [
+            TextTest{
+                reference:"xXx yYy zZz", ref_len: 11, tests: vec![
+                     TextTestGroup{target_len:10,result: "xXx yYy..."  },
+                     TextTestGroup{target_len:12,result: "xXx yYy zZz "},
+                ],
+            },
+            TextTest{
+                reference:"平仮名, ひらがな", ref_len:16, tests: vec![
+                    TextTestGroup{target_len:14,result: "平仮名, ひ... "   },
+                    TextTestGroup{target_len:15,result: "平仮名, ひら..."  },
+                    TextTestGroup{target_len:17,result: "平仮名, ひらがな "}
+                ],
+            },
+            TextTest{
+                reference: "Novak 監視™", ref_len: 11, tests: vec![
+                    TextTestGroup{target_len:09,result: "Novak ..."   },
+                    TextTestGroup{target_len:10,result: "Novak ... "  },
+                    TextTestGroup{target_len:12,result: "Novak 監視™ "},
+                ],
+            },
+            TextTest{
+                reference: "ラン", ref_len: 4, tests: vec![
+                    TextTestGroup{target_len:0,result: ""     },
+                    TextTestGroup{target_len:1,result: " "    },
+                    TextTestGroup{target_len:2,result: ".."   },
+                    TextTestGroup{target_len:3,result: "..."  },
+                    TextTestGroup{target_len:5,result: "ラン "},
+                ],
+            },
+        ].iter()
+        .for_each(|test: &TextTest| {
+            println!("Testing: {}", test.reference);
+            let reference = test.reference.to_string();
+            {
+                let text = term_text(reference.clone(), test.ref_len);
+                assert_eq!(text, reference);
+                assert_eq!(text.width(), test.ref_len);
+            }
+            test.tests.iter()
+            .for_each(|sub_test| {
+                let text = term_text(reference.clone(), sub_test.target_len);
+                println!("{}, {}, {}", text, text.len(), text.width());
+                assert_eq!(text, sub_test.result.to_string());
+                assert_eq!(text.width(), sub_test.target_len);
+            });
+        });
     }
 }
 
