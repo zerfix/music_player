@@ -81,7 +81,7 @@ impl<'a> StateLibrary {
                         Some(entry) => entry,
                     };
                     let tracks = self.list_tracks.entries().iter()
-                        .filter(|t| t.is_selectable() && t.album_artist == entry.album_artist)
+                        .filter(|t| t.is_selectable() && t.id_artist == entry.id_artist)
                         .cloned()
                         .collect::<Vec<TrackFile>>();
                     let album_offset = self.list_tracks.entries().iter()
