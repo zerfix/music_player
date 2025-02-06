@@ -66,8 +66,8 @@ fn input_loop(tx: &MsgChannels) -> Result<()> {
                             _                   => send_l(InputLocal::Tab)?,
                         },
                         // actions
-                        KeyCode::Enter     => send_l(InputLocal::Enter)?,
-                        KeyCode::Char(' ') => send_l(InputLocal::Space)?,
+                        KeyCode::Enter     => send_l(InputLocal::Select)?,
+                        KeyCode::Char(' ') => send_l(InputLocal::Select)?,
                         // global shortcuts
                         KeyCode::Char('x') => send_g(InputGlobal::Previous)?,
                         KeyCode::Char('c') => send_g(InputGlobal::PlayPause)?,

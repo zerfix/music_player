@@ -73,26 +73,12 @@ impl<'a> StateLibrary {
             InputLocal::End    => local(InputLocalEffect::End),
             InputLocal::Tab    => local(InputLocalEffect::NextTab),
             InputLocal::RevTab => local(InputLocalEffect::PrevTab),
-            InputLocal::Space  => match self.selected_column {
-                LibraryColumn::Filter => InputEffect::None,
-                LibraryColumn::Tracks => {
-                    let entry = match self.list_tracks.selected_entry() {
-                         None => {return InputEffect::None},
-                         Some(entry) => entry,
-                    };
-                    let tracks = self.list_tracks.entries().iter()
-                        .filter(|t| t.is_selectable() && t.album_artist == entry.album_artist)
-                        .cloned()
-                        .collect::<Vec<TrackFile>>();
-                    global(InputGlobalEffect::AppendTracks(tracks))
-                },
-            },
-            InputLocal::Enter => match self.selected_column {
+            InputLocal::Select => match self.selected_column {
                 LibraryColumn::Filter => local(InputLocalEffect::Right),
                 LibraryColumn::Tracks => {
                     let entry = match self.list_tracks.selected_entry() {
-                         None => {return InputEffect::None},
-                         Some(entry) => entry,
+                        None => {return InputEffect::None},
+                        Some(entry) => entry,
                     };
                     let tracks = self.list_tracks.entries().iter()
                         .filter(|t| t.is_selectable() && t.album_artist == entry.album_artist)

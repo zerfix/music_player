@@ -19,8 +19,7 @@ pub enum InputLocal {
     Tab,
     RevTab,
 
-    Space,
-    Enter,
+    Select,
 }
 
 #[derive(Clone, Copy)]
