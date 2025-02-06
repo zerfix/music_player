@@ -8,6 +8,7 @@ pub struct StatePlaylist {
     pub selected: usize,
 }
 
+#[derive(Clone, Copy)]
 #[derive(Debug)]
 pub enum PlaybackState {
     None,

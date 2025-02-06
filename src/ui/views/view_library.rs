@@ -1,5 +1,5 @@
+use std::iter::repeat;
 use unicode_width::UnicodeWidthStr;
-
 use crate::state::state_library::LibraryColumn;
 use crate::state::state_library::LibraryTab;
 use crate::state::state_playlist::PlaybackState;
@@ -33,9 +33,9 @@ pub fn draw_library_view(
     common: &RenderDataCommon,
     view: RenderDataViewLibrary,
 ) {
-    let filter_width = (size.width / 3).min(42);
+    let filter_width = (size.width / 3).min(45);
     let track_width = size.width - filter_width - 1;
-    info!("width: {}, filter: {}, separator: 1, track_width: {}", size.width, filter_width, track_width);
+
     render_header(
         output,
         size.width,
@@ -44,6 +44,7 @@ pub fn draw_library_view(
 
     for i in 0..size.height.saturating_sub(1) {
         output.newline();
+
         match view.left.get(i).copied() {
             Some(filter) => render_filter_row(
                 output,
@@ -113,11 +114,12 @@ fn render_filter_row(
     is_active: bool,
     is_selected: bool,
 ) {
-    let playback_fg = match playback_state {
-        PlaybackState::None    => None,
-        PlaybackState::Played  => Some(Color::Red),
-        PlaybackState::Playing => Some(Color::Yellow),
-        PlaybackState::Qued    => Some(Color::Green),
+    let playback_fg = match (is_selected, playback_state) {
+        (true , _                     ) => Color::Black,
+        (false, PlaybackState::None   ) => Color::Default,
+        (false, PlaybackState::Played ) => Color::Red,
+        (false, PlaybackState::Playing) => Color::Yellow,
+        (false, PlaybackState::Qued   ) => Color::Green,
     };
     let playback = match playback_state {
         PlaybackState::None    => " ",
@@ -125,19 +127,15 @@ fn render_filter_row(
         PlaybackState::Playing => ">",
         PlaybackState::Qued    => "+",
     };
-    let name = term_text(entry.name().to_string(), width.saturating_sub(3));
 
-    let (fg, bg) = match (is_active, is_selected) {
-        (false, false) |
-        (true , false) => (Color::Default, Color::Default),
-        (false, true ) => (Color::Black  , Color::Red    ),
+    let (fg, bg) = match (is_selected, is_active) {
+        (false, _    ) => (Color::Default, Color::Default),
+        (true , false) => (Color::Black  , Color::Red    ),
         (true , true ) => (Color::Black  , Color::Cyan   ),
     };
+    let name = term_text(entry.name().to_string(), width.saturating_sub(3));
 
-    let mut format = Format::color(
-        playback_fg.unwrap_or(fg),
-        bg,
-    );
+    let mut format = Format::color(playback_fg, bg);
     output.format(format);
     output.push(playback);
 
@@ -164,7 +162,7 @@ fn render_album_row(
     let album_name = term_text(album_name, album_len);
 
     let static_size = album_name.width() + year.width() + 4;
-    let mut dyn_len = width as isize - static_size as isize;
+    let dyn_len = width.saturating_sub(static_size);
 
     let mut format = Format::new();
     format.bold = true;
@@ -184,7 +182,6 @@ fn render_album_row(
     output.push(" ");
     output.push(year);
     output.push(" ");
-    output.reset_format();
 }
 
 fn render_track_row(
@@ -214,7 +211,7 @@ fn render_track_row(
     let seperate = |time: u64| (time % 60, time / 60);
     let duration_sec = track.duration.as_secs();
     let duration = match duration_sec {
-        ..=3599 => {
+        ..3600 => {
             let (seconds, minutes) = seperate(duration_sec);
             format!("{:02}:{:02}", minutes, seconds)
         },
@@ -244,23 +241,20 @@ fn render_track_row(
         true  => term_text(artist_name, artist_len),
     };
 
-    let (fg_d, fg_y, bg) = match (is_active, is_selected) {
-        (false, false) |
-        (true , false) => (Color::Default, Color::Yellow, Color::Default),
-        (false, true ) => (Color::Black  , Color::Black , Color::Red    ),
+    let (fg_d, fg_y, bg) = match (is_selected, is_active) {
+        (false, _    ) => (Color::Default, Color::Yellow, Color::Default),
+        (true , false) => (Color::Black  , Color::Black , Color::Red    ),
         (true , true ) => (Color::Black  , Color::Black , Color::Cyan   ),
     };
-    let playback_fg = match playback_state {
-        PlaybackState::None    => None,
-        PlaybackState::Played  => Some(Color::Red),
-        PlaybackState::Playing => Some(Color::Yellow),
-        PlaybackState::Qued    => Some(Color::Green),
+    let playback_fg = match (is_selected, playback_state) {
+        (true , _                     ) => Color::Black,
+        (false, PlaybackState::None   ) => Color::Default,
+        (false, PlaybackState::Played ) => Color::Red,
+        (false, PlaybackState::Playing) => Color::Yellow,
+        (false, PlaybackState::Qued   ) => Color::Green,
     };
 
-    let mut format = Format::color(
-        playback_fg.unwrap_or(Color::Default),
-        bg,
-    );
+    let mut format = Format::color(playback_fg, bg);
     output.format(format);
     output.push(playback);
     output.push(" ");
