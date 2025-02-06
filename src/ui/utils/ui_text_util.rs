@@ -1,53 +1,39 @@
-use unicode_width::UnicodeWidthStr;
+use std::iter::repeat;
+use unicode_width::UnicodeWidthChar;
 
 
 //-//////////////////////////////////////////////////////////////////
 //
 //-//////////////////////////////////////////////////////////////////
-pub fn term_text(mut buf: String, length: usize) -> String {
-    if length < buf.width() {
-        match (length, buf.len()) {
-            (0, _) => buf = "".to_string(),
-            (1, 1) => (),
-            (1, _) => buf = " ".to_string(),
-            (2, 0) => buf = "  ".to_string(),
-            (2, 1) => buf.push_str(" "),
-            (2, 2) => (),
-            (2, _) => buf = "..".to_string(),
-            (_, _) => {
-               buf.push_str("...");
-               while buf.width() > length {
-                   buf.pop();
-                   buf.pop();
-                   buf.pop();
-                   buf.pop();
-                   buf.push_str("...");
-               }
-               while buf.width() < length {
-                   buf.push_str(" ");
-               }
+///// Formats text to fit target number of cells in terminal.
+pub fn term_text(mut buf: String, target: usize) -> String {
+    let width = buf.chars().map(|c| c.width().unwrap_or(0)).sum::<usize>();
+    let diff  = target as isize - width as isize;
+
+    match (target, diff) {
+        (_  ,  0 ) => {},
+        (_  , 1..) => buf.extend(repeat(' ').take(diff as usize)),
+        (..4, ..0) => buf = ".".repeat(target),
+        (4.., ..0) => {
+            let iterator = buf.chars().map(|c| (c.len_utf8(), c.width().unwrap_or(0)));
+            let mut current = 0;
+            let mut remaining = target - 3;
+            for (length, width) in iterator {
+                match width <= remaining {
+                    false => break,
+                    true => {
+                        current   += length;
+                        remaining -= width;
+                    },
+                }
             }
-        }
-    } else
-    if length > buf.width() {
-        while buf.width() < length {
-            buf.push(' ');
+
+            buf.truncate(current);
+            buf.push_str("...");
+            buf.extend(repeat(' ').take(remaining));
         }
     }
 
-    buf
-}
-
-pub fn term_text_line(length: usize, pre: &str, dynamic: String, post: &str) -> String {
-    let fixed_len = pre.chars().count() + post.chars().count();
-    let extra_len = length - fixed_len;
-
-    let dynamic = term_text(dynamic, extra_len);
-
-    let mut buf = String::with_capacity(pre.len() + dynamic.len() + post.len());
-    buf.push_str(pre);
-    buf.push_str(&dynamic);
-    buf.push_str(post);
     buf
 }
 
@@ -58,6 +44,7 @@ pub fn term_text_line(length: usize, pre: &str, dynamic: String, post: &str) -> 
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
+    use unicode_width::UnicodeWidthStr;
 
     struct TextTest {
         pub reference: &'static str,
@@ -96,7 +83,7 @@ mod tests {
             TextTest{
                 reference: "ラン", ref_len: 4, tests: vec![
                     TextTestGroup{target_len:0,result: ""     },
-                    TextTestGroup{target_len:1,result: " "    },
+                    TextTestGroup{target_len:1,result: "."    },
                     TextTestGroup{target_len:2,result: ".."   },
                     TextTestGroup{target_len:3,result: "..."  },
                     TextTestGroup{target_len:5,result: "ラン "},
