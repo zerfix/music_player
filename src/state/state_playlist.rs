@@ -1,4 +1,5 @@
-use crate::types::types_library_entry::{LibraryFilterEntry, TrackFile};
+use crate::types::types_library_entry::LibraryFilterEntry;
+use crate::types::types_library_entry::TrackFile;
 
 //-//////////////////////////////////////////////////////////////////
 #[derive(Clone)]
@@ -64,61 +65,57 @@ impl StatePlaylist {
             LibraryFilterEntry::Artist(artist) => {
                 self.list.iter()
                     .enumerate()
-                    .fold(None as Option<PlaybackState>, |acc, (index, track)| {
-                        if track.id_artist != artist.artist_id {
-                            acc
-                        } else {
-                            match (&acc, index as isize - self.selected as isize) {
-                                (&None                        , ..0) => Some(PlaybackState::Played ),
-                                (&None                        ,  0 ) => Some(PlaybackState::Playing),
-                                (&None                        , 0..) => Some(PlaybackState::Qued   ),
-                                (&Some(PlaybackState::Played ),  0 ) => Some(PlaybackState::Playing),
-                                (&Some(PlaybackState::Played ), 0..) => Some(PlaybackState::Qued   ),
-                                (&Some(PlaybackState::Qued   ),  0 ) => Some(PlaybackState::Playing),
-                                (_, _) => acc,
-                            }
+                    .filter(|(_, track)| track.id_artist == artist.artist_id)
+                    .map(|(index, _)| match index as isize - self.selected as isize {
+                        ..0 => PlaybackState::Played,
+                         0  => PlaybackState::Playing,
+                        1.. => PlaybackState::Qued,
+                    })
+                    .fold(PlaybackState::None, |acc, state| {
+                        match (acc, state) {
+                            (PlaybackState::Playing, _                     ) |
+                            (_                     , PlaybackState::Playing) => PlaybackState::Playing,
+                            (PlaybackState::Qued   , _                     ) |
+                            (_                     , PlaybackState::Qued   ) => PlaybackState::Qued,
+                            (PlaybackState::Played , _                     ) |
+                            (_                     , PlaybackState::Played ) => PlaybackState::Played,
+                            (_                     , _                     ) => PlaybackState::None,
                         }
                     })
-                    .unwrap_or(PlaybackState::None)
             }
             LibraryFilterEntry::Year{year} => {
                 self.list.iter()
                     .enumerate()
-                    .fold(None as Option<PlaybackState>, |acc, (index, track)| {
-                        if track.year != year {
-                            acc
-                        } else {
-                            match (&acc, index as isize - self.selected as isize) {
-                                (&None                        , ..0) => Some(PlaybackState::Played ),
-                                (&None                        ,  0 ) => Some(PlaybackState::Playing),
-                                (&None                        , 0..) => Some(PlaybackState::Qued   ),
-                                (&Some(PlaybackState::Played ),  0 ) => Some(PlaybackState::Playing),
-                                (&Some(PlaybackState::Played ), 0..) => Some(PlaybackState::Qued   ),
-                                (&Some(PlaybackState::Qued   ),  0 ) => Some(PlaybackState::Playing),
-                                (_, _) => acc,
-                            }
+                    .filter(|(_, track)| track.year == year)
+                    .map(|(index, _)| match index as isize - self.selected as isize {
+                        ..0 => PlaybackState::Played,
+                         0  => PlaybackState::Playing,
+                        1.. => PlaybackState::Qued,
+                    })
+                    .fold(PlaybackState::None, |acc, state| {
+                        match (acc, state) {
+                            (PlaybackState::Playing, _                     ) |
+                            (_                     , PlaybackState::Playing) => PlaybackState::Playing,
+                            (PlaybackState::Qued   , _                     ) |
+                            (_                     , PlaybackState::Qued   ) => PlaybackState::Qued,
+                            (PlaybackState::Played , _                     ) |
+                            (_                     , PlaybackState::Played ) => PlaybackState::Played,
+                            (_                     , _                     ) => PlaybackState::None,
                         }
                     })
-                    .unwrap_or(PlaybackState::None)
             }
         }
     }
 
     pub fn get_playback_state_for_track(&self, track_id: u64) -> PlaybackState {
-        self.list.iter()
-            .enumerate()
-            .fold(None as Option<PlaybackState>, |acc, (index, track)| {
-                match (acc, track.id_track == track_id) {
-                    (Some(s), _    ) => Some(s),
-                    (None   , false) => None,
-                    (None   , true ) => match index as isize - self.selected as isize {
-                        ..0 => Some(PlaybackState::Played),
-                         0  => Some(PlaybackState::Playing),
-                        0.. => Some(PlaybackState::Qued),
-                    },
-                }
-            })
-            .unwrap_or(PlaybackState::None)
+        match self.list.iter().enumerate().find(|(_, track)| track.id_track == track_id) {
+            Some((index, _)) => match index as isize - self.selected as isize {
+                ..0 => PlaybackState::Played,
+                 0  => PlaybackState::Playing,
+                1.. => PlaybackState::Qued,
+            },
+            None => PlaybackState::None,
+        }
     }
 }
 //-//////////////////////////////////////////////////////////////////
