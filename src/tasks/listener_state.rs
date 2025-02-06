@@ -1,7 +1,8 @@
-use color_eyre::Result;
 use color_eyre::Report;
+use color_eyre::Result;
 use crossbeam_channel::Receiver;
-use std::time::SystemTime;
+use std::time::Duration;
+use std::time::Instant;
 use crate::enums::enum_input::InputGlobalEffect;
 use crate::enums::enum_input::InputEffect;
 use crate::enums::enum_input::InputGlobal;
@@ -23,9 +24,8 @@ pub enum StateActions {
     ScanIsScanning{is_scanning: bool}, // used to show user if scanning on startup
     ScanAddSong{track: TrackFile},
     Render{
-        render_target: SystemTime,
-        render_start: SystemTime,
-        render_request: SystemTime,
+        render_start: Instant,
+        render_request: Duration,
         term_size: TermSize},
     Exit,
 }
@@ -127,13 +127,12 @@ fn state_loop(rx: Receiver<StateActions>, tx: MsgChannels) -> Result<()> {
                     info!("{} tracks", library.tracks.len());
                 })
             },
-            StateActions::Render{render_target, render_start, render_request, term_size} => {
+            StateActions::Render{render_start, render_request, term_size} => {
                 if let Some((common, view)) = state.render_state(false, term_size) {
                     tx_tui.send(RenderActions::RenderFrame{
-                        render_target,
                         render_start,
                         render_request,
-                        render_state: SystemTime::now(),
+                        render_state: render_start.elapsed(),
                         common,
                         view,
                     }).unwrap();

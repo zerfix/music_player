@@ -1,11 +1,12 @@
+use crossbeam_channel::Receiver;
+use crossterm::cursor;
+use crossterm::event;
 use crossterm::execute;
 use crossterm::style::Print;
 use crossterm::terminal;
-use crossterm::event;
-use crossterm::cursor;
-use crossbeam_channel::Receiver;
 use std::io::stdout;
-use std::time::SystemTime;
+use std::time::Duration;
+use std::time::Instant;
 use crate::state::state_playlist::StatePlaylist;
 use crate::types::types_tui::TermSize;
 use crate::types::types_tui::TermState;
@@ -19,14 +20,12 @@ use crate::ui::views::view_library::draw_library_view;
 //-////////////////////////////////////////////////////////////////////////////
 pub enum RenderActions {
     RenderRequest{
-        render_target: SystemTime,
-        render_start: SystemTime,
+        render_start: Instant,
     },
     RenderFrame{
-        render_target : SystemTime,
-        render_start  : SystemTime,
-        render_request: SystemTime,
-        render_state  : SystemTime,
+        render_start  : Instant,
+        render_request: Duration,
+        render_state  : Duration,
         common: RenderDataCommon,
         view: RenderDataView,
     },
@@ -65,17 +64,15 @@ pub fn start_tui_listener(rx: Receiver<RenderActions>, tx: MsgChannels) {
     info!("Running tui render loop");
     while let Ok(msg) = rx.recv() {
         match msg {
-            RenderActions::RenderRequest{render_target, render_start} => {
+            RenderActions::RenderRequest{render_start} => {
                 let term_size = TermSize::new().unwrap();
                 tx_state.send(StateActions::Render{
-                    render_target,
                     render_start,
-                    render_request: SystemTime::now(),
+                    render_request: render_start.elapsed(),
                     term_size,
                 }).unwrap()
             },
             RenderActions::RenderFrame{
-                render_target,
                 render_start,
                 render_request,
                 render_state,
@@ -88,30 +85,26 @@ pub fn start_tui_listener(rx: Receiver<RenderActions>, tx: MsgChannels) {
                     RenderDataView::Library(view) => draw_library_view(&mut term_state, term_size, &common, view),
                 }
 
-                let render_layout = SystemTime::now();
+                let render_layout = render_start.elapsed();
 
                 execute!(
                     stdout,
                     terminal::BeginSynchronizedUpdate,
-//                    terminal::Clear(terminal::ClearType::All),
                     cursor::MoveTo(0,0),
                     Print(term_state.output()),
                     terminal::EndSynchronizedUpdate,
                 ).unwrap();
 
-                let render_output = SystemTime::now();
+                let render_output = render_start.elapsed();
 
                 info!(
-                    "Render {:?}: target > start {:?} > request {:?} > state {:?} > layout {:?} > output {:?}",
-                    render_output.duration_since(render_target).unwrap_or_default(),
-                    render_start.duration_since(render_target).unwrap_or_default(),
-                    render_request.duration_since(render_start).unwrap_or_default(),
-                    render_state.duration_since(render_request).unwrap_or_default(),
-                    render_layout.duration_since(render_state).unwrap_or_default(),
-                    render_output.duration_since(render_layout).unwrap_or_default(),
+                    "Render {:?}: start > request {:?} > copy state {:?} > render {:?} > output {:?}",
+                    render_output,
+                    render_request,
+                    render_state  - render_request,
+                    render_layout - render_state,
+                    render_output - render_layout,
                 );
-
-                info!("output_len; {:?}", term_state.capacity());
 
                 term_state.clear();
             },
