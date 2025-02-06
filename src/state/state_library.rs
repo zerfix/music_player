@@ -3,7 +3,7 @@ use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use strum_macros::IntoStaticStr;
 use rayon::prelude::*;
-use std::time::SystemTime;
+use std::time::Instant;
 use crate::enums::enum_input::InputGlobalEffect;
 use crate::enums::enum_input::InputLocal;
 use crate::enums::enum_input::InputLocalEffect;
@@ -188,7 +188,7 @@ impl<'a> StateLibrary {
 
     /// full refresh of filter list
     fn refresh_filter_list(&mut self) {
-        let now = SystemTime::now();
+        let now = Instant::now();
         let mut filters = vec![LibraryFilterEntry::All]
             .into_par_iter()
             .chain(self.tracks.par_iter()
@@ -200,13 +200,13 @@ impl<'a> StateLibrary {
         filters.sort_unstable();
         filters.dedup();
         self.list_filter.replace_all(filters);
-        info!("Assemble filter list: {:?}", SystemTime::now().duration_since(now).unwrap_or_default());
+        info!("Assemble filter list: {:?}", now.elapsed());
         self.refresh_tracks_list();
     }
 
     /// full refresh of track list
     fn refresh_tracks_list(&mut self) {
-        let now = SystemTime::now();
+        let now = Instant::now();
         let mut tracks = self.tracks.iter()
             .filter(|track| match self.list_filter.selected_entry() {
                 None => false,
@@ -232,7 +232,7 @@ impl<'a> StateLibrary {
             })
             .collect::<Vec<TrackFile>>();
         tracks.sort_unstable();
-        info!("Assemble track list: {:?}", SystemTime::now().duration_since(now).unwrap_or_default());
+        info!("Assemble track list: {:?}", now.elapsed());
         self.list_tracks.replace_all(tracks);
     }
 }
