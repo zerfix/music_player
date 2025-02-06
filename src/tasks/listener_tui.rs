@@ -21,6 +21,7 @@ use crate::ui::views::view_library::draw_library_view;
 pub enum RenderActions {
     RenderRequest{
         render_start: Instant,
+        interval: u8,
     },
     RenderFrame{
         render_start  : Instant,
@@ -34,6 +35,7 @@ pub enum RenderActions {
 
 #[derive(Debug)]
 pub struct RenderDataCommon {
+    pub interval: u8,
     pub is_scanning: bool,
     pub playlist: StatePlaylist,
 }
@@ -64,9 +66,10 @@ pub fn start_tui_listener(rx: Receiver<RenderActions>, tx: MsgChannels) {
     info!("Running tui render loop");
     while let Ok(msg) = rx.recv() {
         match msg {
-            RenderActions::RenderRequest{render_start} => {
+            RenderActions::RenderRequest{render_start, interval} => {
                 let term_size = TermSize::new().unwrap();
                 tx_state.send(StateActions::Render{
+                    interval,
                     render_start,
                     render_request: render_start.elapsed(),
                     term_size,

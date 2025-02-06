@@ -4,6 +4,7 @@
 #[derive(Clone, Copy)]
 #[derive(Debug)]
 pub struct StateInterface {
+    pub interval: u8,
     pub is_scanning: bool,
     pub current_view: CurrentView,
 }
@@ -17,6 +18,7 @@ pub enum CurrentView {
 impl StateInterface {
     pub fn init() -> StateInterface {
         StateInterface{
+            interval: 0,
             is_scanning: false,
             current_view: CurrentView::Library,
         }

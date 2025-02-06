@@ -11,6 +11,7 @@ use crate::types::types_tui::Color;
 use crate::types::types_tui::Format;
 use crate::types::types_tui::TermSize;
 use crate::ui::utils::ui_text_util::term_text;
+use crate::ui::utils::ui_loading_icon_util::loading_icon;
 
 
 //-////////////////////////////////////////////////////////////////////////////
@@ -39,6 +40,7 @@ pub fn draw_library_view(
     render_header(
         output,
         size.width,
+        common,
         view.tab_selected,
     );
 
@@ -84,6 +86,7 @@ pub fn draw_library_view(
 fn render_header(
     output: &mut TermState,
     width: usize,
+    common: &RenderDataCommon,
     library_tab: LibraryTab,
 ) {
     output.format(Format{
@@ -96,7 +99,13 @@ fn render_header(
     let name: &'static str = library_tab.into();
     let len = 2 + name.len();
 
-    output.push("  ");
+    let loading_icon = match common.is_scanning {
+        true  => &loading_icon(common.interval).to_string(),
+        false => " "
+    };
+
+    output.push(loading_icon);
+    output.push(" ");
     output.push(name);
 
     for _ in 0..width-len {

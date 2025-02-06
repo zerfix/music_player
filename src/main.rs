@@ -33,6 +33,7 @@ mod ui {
     }
     pub mod utils {
         pub mod ui_text_util;
+        pub mod ui_loading_icon_util;
     }
     pub mod views {
         pub mod view_library;

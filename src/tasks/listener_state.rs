@@ -24,6 +24,7 @@ pub enum StateActions {
     ScanIsScanning{is_scanning: bool}, // used to show user if scanning on startup
     ScanAddSong{track: TrackFile},
     Render{
+        interval: u8,
         render_start: Instant,
         render_request: Duration,
         term_size: TermSize},
@@ -127,8 +128,8 @@ fn state_loop(rx: Receiver<StateActions>, tx: MsgChannels) -> Result<()> {
                     info!("{} tracks", library.tracks.len());
                 })
             },
-            StateActions::Render{render_start, render_request, term_size} => {
-                if let Some((common, view)) = state.render_state(false, term_size) {
+            StateActions::Render{interval, render_start, render_request, term_size} => {
+                if let Some((common, view)) = state.render_state(false, term_size, interval) {
                     tx_tui.send(RenderActions::RenderFrame{
                         render_start,
                         render_request,

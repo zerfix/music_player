@@ -44,7 +44,13 @@ impl AppState {
         self.has_changed = true;
     }
 
-    pub fn render_state(&mut self, force: bool, term_size: TermSize) -> Option<(RenderDataCommon, RenderDataView)> {
+    pub fn render_state(&mut self, force: bool, term_size: TermSize, interval: u8) -> Option<(RenderDataCommon, RenderDataView)> {
+        if self.interface.interval != interval {
+            self.interface.interval = interval;
+            if self.interface.is_scanning {
+                self.has_changed = true;
+            }
+        }
         if term_size != self.term_size {
             self.has_changed = true;
             self.term_size = term_size;
@@ -56,6 +62,7 @@ impl AppState {
         self.has_changed = false;
 
         let common = RenderDataCommon{
+            interval,
             is_scanning: self.interface.is_scanning,
             playlist   : self.playlist.clone(),
         };
