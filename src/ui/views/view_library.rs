@@ -173,10 +173,7 @@ fn render_album_row(
     output.push(" ");
 
     output.format(*format.fg(Color::Cyan));
-    while dyn_len > 0 {
-        output.push("⎯");
-        dyn_len -= 1;
-    }
+    output.extend(repeat('⎯').take(dyn_len));
 
     output.format(*format.fg(Color::Default));
     output.push(" ");

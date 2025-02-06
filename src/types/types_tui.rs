@@ -1,4 +1,5 @@
 use color_eyre::Result;
+use std::fmt::Write;
 
 #[derive(Debug)]
 #[derive(Clone, Copy)]
@@ -108,8 +109,8 @@ impl Format {
         self
     }
 
-    pub fn term_format_codes(&self) -> String {
-        let mut buffer = String::with_capacity(42);
+    pub fn output_term_codes(&self, buffer: &mut String) {
+        buffer.reserve(42);
         buffer.push_str("\x1B[0");
         if self.bold {
             buffer.push_str(";1");
@@ -118,69 +119,53 @@ impl Format {
             buffer.push_str(";3");
         }
         if let Some((r,g,b)) = self.fg.rgb() {
-            buffer.push_str(&format!(";38;2;{};{};{}",r,g,b));
+            write!(buffer, ";38;2;{:03};{:03};{:03}",r,g,b).unwrap();
         }
         if let Some((r,g,b)) = self.bg.rgb() {
-            buffer.push_str(&format!(";48;2;{};{};{}",r,g,b));
+            write!(buffer, ";48;2;{:03};{:03};{:03}",r,g,b).unwrap();
         }
         buffer.push('m');
-        buffer
     }
 }
 
 pub struct TermState {
     output: String,
-    format: Format,
 }
 
 impl TermState{
     pub fn new() -> TermState {
         TermState {
             output: String::new(),
-            format: Format::new(),
         }
     }
 
     /// Prepares for new view
     pub fn clear(&mut self) {
         self.output.clear();
-        self.reset_format();
     }
 
+    /// Push string to buffer
     pub fn push(&mut self, s: &str) {
         self.output.push_str(s);
     }
 
+    /// Repeat character to buffer
+    pub fn extend<I: IntoIterator<Item = char>>(&mut self, iter: I) {
+        self.output.extend(iter);
+    }
+
+    /// Add newline
     pub fn newline(&mut self) {
         self.push("\r\n");
     }
 
-    /// Finish rendering and output
-    pub fn output(&mut self) -> &str {
-        self.format(Format::new());
-        &self.output
-    }
-
+    /// Add terminal formatting codes to buffer
     pub fn format(&mut self, format: Format) {
-        if format == self.format {return}
-        self.format = format;
-        let term_codes = &format.term_format_codes();
-        self.output.push_str(&term_codes);
+        format.output_term_codes(&mut self.output);
     }
 
-    pub fn go_to(&mut self, row: usize, column: usize) {
-        self.push(&format!("\x1B[{},{}H", row, column));
-    }
-
-    pub fn reset_format(&mut self) {
-        self.format(Format::new());
-    }
-
-    pub fn current_format(&self) -> &Format {
-        &self.format
-    }
-
-    pub fn capacity(&self) -> usize {
-        self.output.capacity()
+    /// Return buffer
+    pub fn output(&mut self) -> &str {
+        &self.output
     }
 }
