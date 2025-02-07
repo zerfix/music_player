@@ -8,7 +8,7 @@ pub fn hash<T: Hash>(item: &T) -> u64 {
     hasher.finish()
 }
 
-pub fn hash_list<T: Hash>(items: &[&T]) -> u64 {
+pub fn hash_list<T: Hash, const L: usize>(items: [&T; L]) -> u64 {
     let mut hasher = DefaultHasher::new();
     for item in items {
         item.hash(&mut hasher);

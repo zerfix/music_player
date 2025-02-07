@@ -64,7 +64,7 @@ impl TrackFile {
         let id_album = {
             let artist      = album_artist.clone().unwrap_or_default().to_lowercase();
             let album_title = album_title.clone().unwrap_or_default().to_lowercase();
-            hash_list(&[&artist, &album_title])
+            hash_list([&artist, &album_title])
         };
 
         let id_track = hash(&path.to_str().unwrap().to_lowercase());
