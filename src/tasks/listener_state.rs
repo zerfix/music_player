@@ -27,125 +27,121 @@ pub enum StateActions {
         interval: u8,
         render_start: Instant,
         render_request: Duration,
-        term_size: TermSize},
-    Exit,
+        term_size: TermSize
+    },
 }
 
 pub fn start_state_listener(rx: Receiver<StateActions>, tx: MsgChannels) {
     if let Err(err) = state_loop(rx, tx.clone()) {
-        error!("error: {:?}", err)
+        error!("error: {:?}", err);
+        tx.exit.send(Err(err)).unwrap();
     }
 
     info!("exiting");
-    tx.tx_exit.send(()).unwrap();
 }
 
 fn state_loop(rx: Receiver<StateActions>, tx: MsgChannels) -> Result<()> {
     let mut state = AppState::init();
-    let tx_playback = tx.tx_playback;
-    let tx_tui      = tx.tx_tui;
 
-    while let Ok(msg) = rx.recv() {
-        match msg {
-            StateActions::InputLocal(input) => {
-                state.mutate(|_, library, playlist| {
-                    let effect = library.handle_input(input);
-                    match effect {
-                        InputEffect::Local(effect) => library.handle_input_effect(effect),
-                        InputEffect::Global(effect) => match effect {
-                            InputGlobalEffect::PlayPause => {todo!()},
-                            InputGlobalEffect::ReplaceTracksAndPlay { tracks, index } => {
-                                playlist.replace(tracks, index);
-                                tx_playback.send(PlaybackActions::Clear).unwrap();
+    loop {
+        match rx.recv() {
+            Err(err) => return Err(err.into()),
+            Ok(msg) => match msg {
+                StateActions::InputLocal(input) => {
+                    state.mutate(|_, library, playlist| {
+                        let effect = library.handle_input(input);
+                        match effect {
+                            InputEffect::Local(effect) => library.handle_input_effect(effect),
+                            InputEffect::Global(effect) => match effect {
+                                InputGlobalEffect::PlayPause => {todo!()},
+                                InputGlobalEffect::ReplaceTracksAndPlay { tracks, index } => {
+                                    playlist.replace(tracks, index);
+                                    tx.playback.send(PlaybackActions::Clear).unwrap();
+                                    if let Some(track) = playlist.get_current_track() {
+                                        tx.playback.send(PlaybackActions::Play {
+                                            track,
+                                            start_at: None,
+                                        }).unwrap();
+                                    }
+                                    if let Some(track) = playlist.get_next_track() {
+                                        tx.playback.send(PlaybackActions::Que {
+                                            track,
+                                        }).unwrap();
+                                    }
+                                },
+                                InputGlobalEffect::AppendTracks(_tracks) => {todo!()},
+                                InputGlobalEffect::AppendTrack(_track) => {todo!()},
+                                InputGlobalEffect::ClearTracks => {todo!()},
+                            },
+                            InputEffect::None => {},
+                        };
+                    });
+                },
+                StateActions::InputGlobal(input) => {
+                    state.mutate(|_, _, playlist| {
+                        match input {
+                            InputGlobal::PlayPause => {},
+                            InputGlobal::Previous => {
+                                playlist.previous();
+                                tx.playback.send(PlaybackActions::Clear).unwrap();
                                 if let Some(track) = playlist.get_current_track() {
-                                    tx_playback.send(PlaybackActions::Play {
+                                    tx.playback.send(PlaybackActions::Play {
                                         track,
                                         start_at: None,
                                     }).unwrap();
                                 }
                                 if let Some(track) = playlist.get_next_track() {
-                                    tx_playback.send(PlaybackActions::Que {
+                                    tx.playback.send(PlaybackActions::Que {
                                         track,
                                     }).unwrap();
                                 }
                             },
-                            InputGlobalEffect::AppendTracks(tracks) => {todo!()},
-                            InputGlobalEffect::AppendTrack(track) => {todo!()},
-                            InputGlobalEffect::ClearTracks => {todo!()},
-                        },
-                        InputEffect::None => {},
-                    };
-                });
-            },
-            StateActions::InputGlobal(input) => {
-                state.mutate(|_, _, playlist| {
-                    match input {
-                        InputGlobal::PlayPause => {},
-                        InputGlobal::Previous => {
-                            playlist.previous();
-                            tx_playback.send(PlaybackActions::Clear).unwrap();
-                            if let Some(track) = playlist.get_current_track() {
-                                tx_playback.send(PlaybackActions::Play {
-                                    track,
-                                    start_at: None,
-                                }).unwrap();
-                            }
-                            if let Some(track) = playlist.get_next_track() {
-                                tx_playback.send(PlaybackActions::Que {
-                                    track,
-                                }).unwrap();
-                            }
-                        },
-                        InputGlobal::Next => {
-                            tx_playback.send(PlaybackActions::Next).unwrap();
-                        },
-                        InputGlobal::Stop => {
-                            info!("stopping state");
-                            playlist.clear();
-                            tx_playback.send(PlaybackActions::Clear).unwrap()
-                        },
-                        InputGlobal::SkipBackward => {todo!()},
-                        InputGlobal::SkipForward => {todo!()},
+                            InputGlobal::Next => {
+                                tx.playback.send(PlaybackActions::Next).unwrap();
+                            },
+                            InputGlobal::Stop => {
+                                info!("stopping state");
+                                playlist.clear();
+                                tx.playback.send(PlaybackActions::Clear).unwrap()
+                            },
+                            InputGlobal::SkipBackward => {todo!()},
+                            InputGlobal::SkipForward => {todo!()},
+                        }
+                    });
+                },
+                StateActions::PlaybackNextTrack{error} => {
+                    state.mutate(|_, _, playlist| {
+                        playlist.next();
+                        if let Some(track) = playlist.get_next_track() {
+                            tx.playback.send(PlaybackActions::Que{track}).unwrap();
+                        }
+                    });
+                },
+                StateActions::ScanIsScanning { is_scanning } => {
+                    state.mutate(|interface, _, _| {
+                        interface.is_scanning = is_scanning;
+                    })
+                },
+                StateActions::ScanAddSong { track } => {
+                    state.mutate(|_, library, _| {
+                        library.new_track(track);
+                        info!("{} tracks", library.tracks.len());
+                    })
+                },
+                StateActions::Render{interval, render_start, render_request, term_size} => {
+                    if let Some((common, view)) = state.render_state(false, term_size, interval) {
+                        tx.tui.send(RenderActions::RenderFrame{
+                            render_start,
+                            render_request,
+                            render_state: render_start.elapsed(),
+                            common,
+                            view,
+                        }).unwrap();
                     }
-                });
-            },
-            StateActions::PlaybackNextTrack{error} => {
-                state.mutate(|_, _, playlist| {
-                    playlist.next();
-                    if let Some(track) = playlist.get_next_track() {
-                        tx_playback.send(PlaybackActions::Que{track}).unwrap();
-                    }
-                });
-            },
-            StateActions::ScanIsScanning { is_scanning } => {
-                state.mutate(|interface, _, _| {
-                    interface.is_scanning = is_scanning;
-                })
-            },
-            StateActions::ScanAddSong { track } => {
-                state.mutate(|_, library, _| {
-                    library.new_track(track);
-                    info!("{} tracks", library.tracks.len());
-                })
-            },
-            StateActions::Render{interval, render_start, render_request, term_size} => {
-                if let Some((common, view)) = state.render_state(false, term_size, interval) {
-                    tx_tui.send(RenderActions::RenderFrame{
-                        render_start,
-                        render_request,
-                        render_state: render_start.elapsed(),
-                        common,
-                        view,
-                    }).unwrap();
-                }
-            },
-            StateActions::Exit => break,
+                },
+            }
         }
     };
-
-    tx_tui.send(super::listener_tui::RenderActions::Exit).unwrap();
-
-    Ok(())
 }
 //-////////////////////////////////////////////////////////////////////////////
 //

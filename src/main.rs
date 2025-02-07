@@ -48,27 +48,28 @@ mod types {
 }
 //-////////////////////////////////////////////////////////////////////////////
 
-use color_eyre::eyre::Context;
-use color_eyre::eyre::ContextCompat;
 use color_eyre::Report;
 use color_eyre::Section;
+use color_eyre::eyre::Context;
+use color_eyre::eyre::ContextCompat;
 use crossbeam_channel::bounded;
-use directories::BaseDirs;
-use directories::ProjectDirs;
-use mimalloc::MiMalloc;
 use static_init::dynamic;
 use std::fs::File;
-use std::fs::read_to_string;
 use std::panic;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::thread;
-use tracing_subscriber::prelude::*;
 use tracing::metadata::LevelFilter;
+use tracing_subscriber::prelude::*;
+use mimalloc::MiMalloc;
+use directories::ProjectDirs;
+use directories::BaseDirs;
+use std::fs::read_to_string;
 use crate::tasks::listener_input::start_input_listener;
 use crate::tasks::listener_playback::start_playback_listener;
 use crate::tasks::listener_scanner::start_fs_scanner_listener;
 use crate::tasks::listener_state::start_state_listener;
+use crate::tasks::listener_tui::RenderActions;
 use crate::tasks::listener_tui::start_tui_listener;
 use crate::tasks::loop_intervals::start_intervals;
 use crate::types::config::Config;
@@ -150,12 +151,13 @@ fn main() -> Result<(), Report> {
     let (tx_playback, rx_playback) = bounded(16);
     let (tx_state   , rx_state   ) = bounded(256);
     let (tx_tui     , rx_tui     ) = bounded(1);
+    let (tx_tui_done, rx_tui_done) = bounded(0);
 
     let channels = || MsgChannels{
-        tx_exit    : tx_exit.clone(),
-        tx_playback: tx_playback.clone(),
-        tx_state   : tx_state.clone(),
-        tx_tui     : tx_tui.clone(),
+        exit    : tx_exit.clone(),
+        playback: tx_playback.clone(),
+        state   : tx_state.clone(),
+        tui     : tx_tui.clone(),
     };
 
     // -- Create Threads --------------------------------------------
@@ -164,7 +166,7 @@ fn main() -> Result<(), Report> {
         let _threads = [
             {
                 let channels = channels();
-                thread::spawn(move || start_tui_listener(rx_tui, channels))
+                thread::spawn(move || start_tui_listener(rx_tui, channels, tx_tui_done))
             },
             {
                 let channels = channels();
@@ -190,8 +192,22 @@ fn main() -> Result<(), Report> {
 
         // -- Wait for exit signal --------------------------------------
         match rx_exit.recv() {
-            Ok(()) => info!("Exiting"),
-            Err(err) => error!("Unreachable exit channel error: {:?}", err),
+            Err(err) => error!("Exit channel error: {:?}", err),
+            Ok(msg) => {
+                info!("Exiting");
+                let _ = tx_tui.send(RenderActions::Exit);
+                let _ = rx_tui_done.recv();
+
+                match msg {
+                    Err(err) => return Err(err),
+                    Ok(msg) => {
+                        if &msg != "" {
+                            info!("Exit msg: {}", msg);
+                            println!("{}", msg);
+                        }
+                    },
+                }
+            },
         }
     };
 

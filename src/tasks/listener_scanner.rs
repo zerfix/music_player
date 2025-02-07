@@ -2,7 +2,6 @@ use color_eyre::Result;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use crate::tasks::listener_state::StateActions;
-use crate::tasks::listener_tui::RenderActions;
 use crate::tasks::listener_playback::PlaybackActions;
 use crate::types::types_library_entry::TrackFile;
 use crate::types::types_msg_channels::MsgChannels;
@@ -17,7 +16,7 @@ use rayon::ThreadPoolBuilder;
 pub fn start_fs_scanner_listener(tx: MsgChannels) {
     if let Err(err) = scanner_loop(&tx) {
         error!("scan error: {:?}", err);
-        tx.tx_tui.send(RenderActions::Exit).unwrap();
+        tx.exit.send(Err(err)).unwrap();
     }
 }
 
@@ -67,8 +66,8 @@ fn scan_directory(scope: &Scope, dir: PathBuf, tx: MsgChannels) {
             if path.is_file() {
                 let extention = path.extension().unwrap_or_default().to_str().unwrap_or_default();
                 if EXTENSIONS.contains(&extention) {
-                    let tx_state = tx.tx_state.clone();
-                    let tx_playback = tx.tx_playback.clone();
+                    let tx_state = tx.state.clone();
+                    let tx_playback = tx.playback.clone();
                     scope.spawn(move |_| match TrackFile::new(&path) {
                         Ok(track) => {
                             tx_state.send(StateActions::ScanAddSong{track}).unwrap();
@@ -86,7 +85,7 @@ fn scan_directory(scope: &Scope, dir: PathBuf, tx: MsgChannels) {
 fn scanner_loop(tx: &MsgChannels) -> Result<()> {
     let dirs = &CONFIG.get().unwrap().media_dirs;
 
-    tx_state.send(StateActions::ScanIsScanning { is_scanning: true })?;
+    tx.state.send(StateActions::ScanIsScanning { is_scanning: true })?;
     info!("Starting scan of '{:?}'", dirs);
     let time = SystemTime::now();
 
@@ -99,7 +98,7 @@ fn scanner_loop(tx: &MsgChannels) -> Result<()> {
 
     info!("scan of all directories took: {:?}", SystemTime::now().duration_since(time)?);
 
-    tx_state.send(StateActions::ScanIsScanning { is_scanning: false })?;
+    tx.state.send(StateActions::ScanIsScanning { is_scanning: false })?;
 
     info!("scan thread exit");
     Ok(())

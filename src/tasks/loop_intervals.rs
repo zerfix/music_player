@@ -1,5 +1,4 @@
 use color_eyre::Result;
-use crossbeam_channel::Sender;
 use std::thread::sleep;
 use std::time::Duration;
 use std::time::Instant;
@@ -12,7 +11,13 @@ use crate::CONFIG;
 
 //-//////////////////////////////////////////////////////////////////
 pub fn start_intervals(tx: MsgChannels) {
-    let tx_tui = tx.tx_tui;
+    if let Err(err) = interval_loop(&tx) {
+        error!("Interval error: {}", err);
+        tx.exit.send(Err(err)).unwrap();
+    }
+}
+
+fn interval_loop(tx: &MsgChannels) -> Result<()> {
     let mut interval = 0u8;
     let mut acc      = 0u16;
 
@@ -32,17 +37,8 @@ pub fn start_intervals(tx: MsgChannels) {
         }
         if interval >= LOADING_ICONS_LEN {interval = 0}
 
-        if let Err(err) = sleep_and_render(&tx_tui, interval) {
-            error!("{:?}", err);
-            let _ = tx_tui.send(RenderActions::Exit).unwrap();
-            break;
-        }
+        sleep(Duration::from_secs_f64(1.0 / framerate as f64));
+        tx.tui.send(RenderActions::RenderRequest{render_start: Instant::now(), interval})?;
     }
-}
-
-fn sleep_and_render(tx_tui: &Sender<RenderActions>, interval: u8) -> Result<()> {
-    sleep(Duration::from_secs_f64(1.0 / 99.982));
-    tx_tui.send(RenderActions::RenderRequest{render_start: Instant::now(), interval})?;
-    Ok(())
 }
 //-//////////////////////////////////////////////////////////////////

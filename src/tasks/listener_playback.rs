@@ -6,6 +6,7 @@ use awedio::sounds::open_file;
 use awedio::sounds::wrappers::CompletionNotifier;
 use awedio::sounds::wrappers::Controller;
 use awedio::sounds::wrappers::Pausable;
+use color_eyre::eyre::Context;
 use color_eyre::Result;
 use std::collections::VecDeque;
 use std::path::Path;
@@ -34,76 +35,84 @@ pub enum PlaybackActions {
 }
 
 pub fn start_playback_listener(rx: Receiver<PlaybackActions>, tx: MsgChannels) {
-    let tx_state = tx.tx_state;
-    let tx_playback = tx.tx_playback;
-    let mut state = PlaybackManager::new().unwrap();
+    if let Err(err) = playback_loop(rx, &tx) {
+        error!("Playback error: {}", err);
+        tx.exit.send(Err(err)).unwrap();
+    }
+}
+
+pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<()> {
+    let mut state = PlaybackManager::new().context("Crating playback manager")?;
     let mut tracks: BTreeMap<u64, Box<Path>> = BTreeMap::new();
 
-    while let Ok(msg) = rx.recv() {
-        match msg {
-            PlaybackActions::NewTrack{track_id, path} => {
-                tracks.insert(track_id, path);
-            },
-            PlaybackActions::Play { track, start_at } => {
-                let path = match tracks.get(&track.id_track) {
-                    Some(path) => path,
-                    None => {
-                        error!(
-                            "Could not find path for track: {:?} {:?} {:?} {:?}, id: {}",
-                            track.album_artist,
-                            track.album_title,
-                            track.track_number,
-                            track.track_title,
-                            track.id_track,
-                        );
+    loop {
+        match rx.recv() {
+            Err(err) => return Err(err.into()),
+            Ok(msg) => match msg {
+                PlaybackActions::NewTrack{track_id, path} => {
+                    tracks.insert(track_id, path);
+                },
+                PlaybackActions::Play { track, start_at } => {
+                    let path = match tracks.get(&track.id_track) {
+                        Some(path) => path,
+                        None => {
+                            error!(
+                                "Could not find path for track: {:?} {:?} {:?} {:?}, id: {}",
+                                track.album_artist,
+                                track.album_title,
+                                track.track_number,
+                                track.track_title,
+                                track.id_track,
+                            );
+                            continue;
+                        },
+                    };
+                    if let Err(err) = state.que(&path) {
+                        tx.state.send(StateActions::PlaybackNextTrack{error: Some(err)})?;
                         continue;
-                    },
-                };
-                if let Err(err) = state.que(&path) {
-                    tx_state.send(StateActions::PlaybackNextTrack{error: Some(err)}).unwrap();
-                    continue;
-                }
-                state.start(tx_playback.clone(), start_at);
-            },
-            PlaybackActions::Que { track } => {
-                let path = match tracks.get(&track.id_track) {
-                    Some(path) => path,
-                    None => {
-                        error!(
-                            "Could not find path for track: {:?} {:?} {:?} {:?}, id: {}",
-                            track.album_artist,
-                            track.album_title,
-                            track.track_number,
-                            track.track_title,
-                            track.id_track,
-                        );
-                        continue;
-                    },
-                };
-                if let Err(err) = state.que(&path) {
-                    tx_state.send(StateActions::PlaybackNextTrack{error: Some(err)}).unwrap()
-                }
-            },
-            PlaybackActions::Callback => {
-                state.next(tx_playback.clone());
-                tx_state.send(StateActions::PlaybackNextTrack{error: None}).unwrap();
-            },
-            PlaybackActions::Pause => {
-                state.pause();
-            },
-            PlaybackActions::Resume => {
-                state.resume();
-            },
-            PlaybackActions::Forward(duration) => {
-                state.start(tx_playback.clone(), Some(duration));
-            },
-            PlaybackActions::Next => {
-                state.next(tx_playback.clone());
-                tx_state.send(StateActions::PlaybackNextTrack { error: None }).unwrap();
-            },
-            PlaybackActions::Clear => {
-                state.clear();
-            },
+                    }
+                    state.start(tx.playback.clone(), start_at);
+                },
+                PlaybackActions::Que { track } => {
+                    let path = match tracks.get(&track.id_track) {
+                        Some(path) => path,
+                        None => {
+                            error!(
+                                "Could not find path for track: {:?} {:?} {:?} {:?}, id: {}",
+                                track.album_artist,
+                                track.album_title,
+                                track.track_number,
+                                track.track_title,
+                                track.id_track,
+                            );
+                            continue;
+                        },
+                    };
+                    if let Err(err) = state.que(&path) {
+                        tx.state.send(StateActions::PlaybackNextTrack{error: Some(err)})?;
+                    }
+                },
+                PlaybackActions::Callback => {
+                    state.next(tx.playback.clone());
+                    tx.state.send(StateActions::PlaybackNextTrack{error: None})?;
+                },
+                PlaybackActions::Pause => {
+                    state.pause();
+                },
+                PlaybackActions::Resume => {
+                    state.resume();
+                },
+                PlaybackActions::Forward(duration) => {
+                    state.start(tx.playback.clone(), Some(duration));
+                },
+                PlaybackActions::Next => {
+                    state.next(tx.playback.clone());
+                    tx.state.send(StateActions::PlaybackNextTrack { error: None })?;
+                },
+                PlaybackActions::Clear => {
+                    state.clear();
+                },
+            }
         }
     }
 }
@@ -142,7 +151,7 @@ impl PlaybackManager {
     }
 
     pub fn que(&mut self, path: &Path) -> Result<()> {
-        info!("quing track {:?}", path);
+        info!("queuing track {:?}", path);
         let sound = open_file(path)?.into_memory_sound()?;
         self.que.push_back(sound);
         Ok(())

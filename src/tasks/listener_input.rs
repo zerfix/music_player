@@ -7,7 +7,6 @@ use crossterm::event;
 use std::time::Duration;
 use crate::enums::enum_input::InputGlobal;
 use crate::tasks::listener_state::StateActions;
-use crate::tasks::listener_tui::RenderActions;
 use crate::types::types_msg_channels::MsgChannels;
 use crate::enums::enum_input::InputLocal;
 
@@ -17,16 +16,13 @@ use crate::enums::enum_input::InputLocal;
 pub fn start_input_listener(tx: MsgChannels) {
     if let Err(err) = input_loop(&tx) {
         error!("{}", err);
+        tx.exit.send(Err(err)).unwrap();
     }
-    tx.tx_tui.send(RenderActions::Exit).unwrap();
 }
 
 fn input_loop(tx: &MsgChannels) -> Result<()> {
-    let tx_state = &tx.tx_state;
-    let tx_tui   = &tx.tx_tui;
-
-    let send_l = |input: InputLocal | tx_state.send(StateActions::InputLocal(input));
-    let send_g = |input: InputGlobal| tx_state.send(StateActions::InputGlobal(input));
+    let send_l = |input: InputLocal | tx.state.send(StateActions::InputLocal(input));
+    let send_g = |input: InputGlobal| tx.state.send(StateActions::InputGlobal(input));
 
     loop {
         if event::poll(Duration::from_secs(60*60)).is_ok() {
@@ -73,7 +69,7 @@ fn input_loop(tx: &MsgChannels) -> Result<()> {
                         KeyCode::Char('c') => send_g(InputGlobal::PlayPause)?,
                         KeyCode::Char('v') => send_g(InputGlobal::Stop)?,
                         KeyCode::Char('b') => send_g(InputGlobal::Next)?,
-                        KeyCode::Char('q') => tx_tui.send(RenderActions::Exit)?,
+                        KeyCode::Char('q') => tx.exit.send(Ok("".to_string()))?,
                         _ => (),
                     },
                     _ => (),
