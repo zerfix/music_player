@@ -84,14 +84,14 @@ fn scan_directory(scope: &Scope, dir: PathBuf, tx: MsgChannels) {
 }
 
 fn scanner_loop(tx: &MsgChannels) -> Result<()> {
-    let tx_state    = &tx.tx_state;
+    let dirs = &CONFIG.get().unwrap().media_dirs;
 
     tx_state.send(StateActions::ScanIsScanning { is_scanning: true })?;
-    info!("Starting scan of '{:?}'", CONFIG.media_dirs);
+    info!("Starting scan of '{:?}'", dirs);
     let time = SystemTime::now();
 
     ThreadPoolBuilder::new().build().unwrap().scope(|scope: &Scope| {
-        for dir in CONFIG.media_dirs.iter() {
+        for dir in dirs.iter() {
             let tx = tx.clone();
             scope.spawn(|scope| scan_directory(scope, dir.clone(), tx));
         }

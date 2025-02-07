@@ -48,15 +48,23 @@ mod types {
 }
 //-////////////////////////////////////////////////////////////////////////////
 
+use color_eyre::eyre::Context;
+use color_eyre::eyre::ContextCompat;
 use color_eyre::Report;
+use color_eyre::Section;
 use crossbeam_channel::bounded;
+use directories::BaseDirs;
+use directories::ProjectDirs;
+use mimalloc::MiMalloc;
 use static_init::dynamic;
 use std::fs::File;
+use std::fs::read_to_string;
 use std::panic;
+use std::path::PathBuf;
+use std::sync::OnceLock;
 use std::thread;
-use tracing::metadata::LevelFilter;
 use tracing_subscriber::prelude::*;
-use mimalloc::MiMalloc;
+use tracing::metadata::LevelFilter;
 use crate::tasks::listener_input::start_input_listener;
 use crate::tasks::listener_playback::start_playback_listener;
 use crate::tasks::listener_scanner::start_fs_scanner_listener;
@@ -70,26 +78,70 @@ use crate::types::types_msg_channels::MsgChannels;
 //
 //-////////////////////////////////////////////////////////////////////////////
 #[global_allocator] static GLOBAL: MiMalloc = MiMalloc;
-#[dynamic] static CONFIG: Config = Config::init();
+#[dynamic] static CONFIG: OnceLock<Config> = OnceLock::new();
 
 fn main() -> Result<(), Report> {
     color_eyre::install()?;
 
-    // -- Init Logger -----------------------------------------------
+    // -- Init ------------------------------------------------------
     {
-        if let Some(path) = &CONFIG.log_path {
-            let file = File::create(path)?;
-            let file_log = tracing_subscriber::fmt::layer()
-                .with_writer(file)
-                .with_filter(LevelFilter::from_level(CONFIG.log_level));
-            tracing_subscriber::registry()
-                .with(file_log)
-                .init();
+        let base_dirs    = BaseDirs::new().context("Getting base directory paths")?;
+        let project_dirs = ProjectDirs::from("", "", "music_player").context("Getting project paths")?;
+        let config_path  = project_dirs.config_dir().join("config.toml");
+
+        // -- Config ----------------------------
+        {
+            if !config_path.exists() {
+                let config = Config::write_default(&config_path)?;
+                println!("Config written to: {}", config_path.to_str().unwrap());
+                match config.media_dirs.get(0) {
+                    Some(dir) => println!(
+                        "Modify to specify music folder paths or re-run to use default {} dir",
+                        dir.to_str().unwrap()
+                    ),
+                    None => println!("Please add your music directory to the config file")
+                }
+                return Ok(())
+            }
+
+            let config = read_to_string(&config_path).context(format!("Reading config file at {}", config_path.to_str().unwrap()))
+                .and_then(|str| toml::from_str::<Config>(&str).context(format!("Parsing config file at {}", config_path.to_str().unwrap())))?;
+
+            if config.media_dirs.len() == 0 {
+                println!("Please add your music directory to the config file at {}", config_path.to_str().unwrap());
+                return Ok(())
+            }
+
+            CONFIG.set(config).unwrap();
         }
 
-        panic::set_hook(Box::new(|panic_info| {
-            error!("Thread {}", panic_info.to_string().replacen(":\n", ": ", 1));
-        }));
+        // -- Logging ----------------------------
+        {
+            let config = &CONFIG.get().unwrap().logging;
+            if config.enable_logging {
+                let log_path: &PathBuf = match config.log_path.starts_with("~") {
+                    false => &config.log_path,
+                    true => &{
+                        let mut buf = base_dirs.home_dir().to_path_buf();
+                        buf.push(config.log_path.strip_prefix("~/").context("Removing ~/ prefix from log_path so it can be replaced with full home dir path")?);
+                        buf
+                    }
+                };
+                let file = File::create(log_path)
+                    .context(format!("Trying to create log file at {}", config.log_path.to_str().unwrap_or("<err>")))
+                    .note(format!("Double check the `log_path` value in your configuration file at {}", config_path.to_str().unwrap_or("<err>")))?;
+                let file_log = tracing_subscriber::fmt::layer()
+                    .with_writer(file)
+                    .with_filter(LevelFilter::from_level(config.log_level.to_level()));
+                tracing_subscriber::registry()
+                    .with(file_log)
+                    .init();
+            }
+
+            panic::set_hook(Box::new(|panic_info| {
+                error!("Thread {}", panic_info.to_string().replacen(":\n", ": ", 1));
+            }));
+        }
     }
 
     // -- Create Channels -------------------------------------------

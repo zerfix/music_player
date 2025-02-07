@@ -8,8 +8,7 @@ use crate::types::types_msg_channels::MsgChannels;
 use crate::ui::utils::ui_loading_icon_util::LOADING_ICONS_LEN;
 use crate::ui::utils::ui_loading_icon_util::LOADING_SPEED_UP;
 use crate::ui::utils::ui_loading_icon_util::LOADING_SPEED_DOWN;
-
-const FRAMES: u16 = 100;
+use crate::CONFIG;
 
 //-//////////////////////////////////////////////////////////////////
 pub fn start_intervals(tx: MsgChannels) {
@@ -17,11 +16,17 @@ pub fn start_intervals(tx: MsgChannels) {
     let mut interval = 0u8;
     let mut acc      = 0u16;
 
+    let framerate  = CONFIG.get().unwrap().framerate;
+    let speed_up   = LOADING_SPEED_UP;
+    let speed_down = LOADING_SPEED_DOWN;
+    let icons_len  = LOADING_ICONS_LEN as u16;
+    let frames_per_interval = (framerate * speed_down) / ((framerate / icons_len) * speed_up);
+
     loop {
         // loading icon progresses on every interval
         // loading takes one round per second * speed_up / speed_down
         acc += 1;
-        if acc > (FRAMES * LOADING_SPEED_DOWN) / ((FRAMES / LOADING_ICONS_LEN as u16) * LOADING_SPEED_UP) {
+        if acc >= frames_per_interval {
             acc = 0;
             interval += 1;
         }
