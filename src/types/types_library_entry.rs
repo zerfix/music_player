@@ -11,6 +11,7 @@ use lofty::read_from_path;
 use lofty::prelude::ItemKey;
 use arrayvec::ArrayString;
 use crate::functions::functions_hash::hash;
+use crate::functions::functions_hash::hash_list;
 use crate::traits::trait_listable::Listable;
 
 
@@ -55,22 +56,18 @@ impl TrackFile {
         let album_title  = primary.album().filter(|s| !s.is_empty());
         let album_number = primary.disk().map(|n| n as u8);
 
-        if track_artist == Some("Caravan Palace".to_string()) {
-            info!("track_artist: {:?}, album_artist: {:?}", &track_artist, &album_artist);
-        }
-
         let id_artist = {
             let artist = album_artist.clone().unwrap_or_default().to_lowercase();
-            hash(artist.as_bytes())
+            hash(&artist)
         };
 
         let id_album = {
             let artist      = album_artist.clone().unwrap_or_default().to_lowercase();
             let album_title = album_title.clone().unwrap_or_default().to_lowercase();
-            hash(format!("{}{}", artist, album_title).as_bytes())
+            hash_list(&[&artist, &album_title])
         };
 
-        let id_track = hash(path.to_str().unwrap().to_lowercase().as_bytes());
+        let id_track = hash(&path.to_str().unwrap().to_lowercase());
 
         let album_artist = album_artist.map(|aa| TrackFile::truncate_names(&aa));
         let album_title  = album_title.map(|at| TrackFile::truncate_names(&at));
