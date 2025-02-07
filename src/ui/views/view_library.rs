@@ -20,7 +20,6 @@ use crate::ui::utils::ui_loading_icon_util::loading_icon;
 #[derive(Debug)]
 pub struct RenderDataViewLibrary {
     pub column_selected: LibraryColumn,
-    pub tabs: Vec<LibraryTab>,
     pub tab_selected: LibraryTab,
     pub left: Vec<LibraryFilterEntry>,
     pub left_selected: usize,

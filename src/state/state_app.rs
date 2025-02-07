@@ -1,5 +1,4 @@
 use crate::state::state_interface::StateInterface;
-use crate::state::state_library::LibraryTab;
 use crate::state::state_library::StateLibrary;
 use crate::state::state_playlist::StatePlaylist;
 use crate::tasks::listener_tui::RenderDataCommon;
@@ -73,7 +72,6 @@ impl AppState {
         let view = RenderDataView::Library(
             RenderDataViewLibrary{
                 column_selected: self.library.selected_column,
-                tabs: vec![LibraryTab::Artists],
                 tab_selected: self.library.selected_tab,
                 left,
                 left_selected,

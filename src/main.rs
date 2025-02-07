@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #![warn(unused_crate_dependencies)]
 
 #[macro_use]
