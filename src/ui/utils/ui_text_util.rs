@@ -29,7 +29,7 @@ pub fn term_text(mut buf: String, target: usize) -> String {
             }
 
             buf.truncate(current);
-            buf.push_str("...");
+            buf.extend(repeat('.').take(3));
             buf.extend(repeat(' ').take(remaining));
         }
     }

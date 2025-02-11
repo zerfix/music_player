@@ -55,11 +55,11 @@ pub fn draw_library_view(
                 view.column_selected == LibraryColumn::Filter,
                 i == view.left_selected,
             ),
-            None => for _ in 0..filter_width {output.push(" ")} ,
+            None => output.extend(repeat(' ').take(filter_width)),
         };
 
         output.format(Format::color(Color::Blue, Color::Default));
-        output.push("┃");
+        output.pushc('┃');
 
         match view.right.get(i).map(|e| (e.is_album_padding, e)) {
             Some((true, track)) => render_album_row(
@@ -75,7 +75,7 @@ pub fn draw_library_view(
                 view.column_selected == LibraryColumn::Tracks,
                 i == view.right_selected,
             ),
-            None => for _ in 0..track_width {output.push(" ")},
+            None => output.extend(repeat(' ').take(track_width)),
         }
     }
 }
@@ -88,28 +88,24 @@ fn render_header(
     common: &RenderDataCommon,
     library_tab: LibraryTab,
 ) {
+    let name: &'static str = library_tab.into();
+    let len = 2 + name.len();
+
+    let loading_icon = match common.is_scanning {
+        true  => loading_icon(common.interval),
+        false => ' ',
+    };
+
     output.format(Format{
         fg: Color::Black,
         bg: Color::Blue,
         bold: true,
         italic: false,
     });
-
-    let name: &'static str = library_tab.into();
-    let len = 2 + name.len();
-
-    let loading_icon = match common.is_scanning {
-        true  => &loading_icon(common.interval).to_string(),
-        false => " "
-    };
-
-    output.push(loading_icon);
-    output.push(" ");
+    output.pushc(loading_icon);
+    output.pushc(' ');
     output.push(name);
-
-    for _ in 0..width-len {
-        output.push(" ");
-    }
+    output.extend(repeat(' ').take(width-len));
 }
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -130,10 +126,10 @@ fn render_filter_row(
         (false, PlaybackState::Qued   ) => Color::Green,
     };
     let playback = match playback_state {
-        PlaybackState::None    => " ",
-        PlaybackState::Played  => "-",
-        PlaybackState::Playing => ">",
-        PlaybackState::Qued    => "+",
+        PlaybackState::None    => ' ',
+        PlaybackState::Played  => '-',
+        PlaybackState::Playing => '>',
+        PlaybackState::Qued    => '+',
     };
 
     let (fg, bg) = match (is_selected, is_active) {
@@ -145,12 +141,12 @@ fn render_filter_row(
 
     let mut format = Format::color(playback_fg, bg);
     output.format(format);
-    output.push(playback);
+    output.pushc(playback);
 
     output.format(*format.fg(fg));
-    output.push(" ");
+    output.pushc(' ');
     output.push(&name);
-    output.push(" ");
+    output.pushc(' ');
 }
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -176,32 +172,32 @@ fn render_album_row(
     format.bold = true;
     output.format(format);
 
-    output.push(" ");
+    output.pushc(' ');
     output.push(&album_name);
-    output.push(" ");
+    output.pushc(' ');
 
     output.format(*format.fg(Color::Cyan));
     output.extend(repeat('⎯').take(dyn_len));
 
     output.format(*format.fg(Color::Default));
-    output.push(" ");
+    output.pushc(' ');
     output.push(year);
-    output.push(" ");
+    output.pushc(' ');
 }
 
 fn render_track_row(
     output: &mut TermState,
-    widht: usize,
+    width: usize,
     track: TrackFile,
     playback_state: PlaybackState,
     is_active: bool,
     is_selected: bool,
 ) {
     let playback = match playback_state {
-        PlaybackState::None    => " ",
-        PlaybackState::Played  => "-",
-        PlaybackState::Playing => ">",
-        PlaybackState::Qued    => "+",
+        PlaybackState::None    => ' ',
+        PlaybackState::Played  => '-',
+        PlaybackState::Playing => '>',
+        PlaybackState::Qued    => '+',
     };
 
     let artist_name  = match track.track_artist {
@@ -228,7 +224,7 @@ fn render_track_row(
     };
 
     let static_len  = track_number.width() + duration.width() + 7;
-    let dynamic_len = widht - static_len;
+    let dynamic_len = width - static_len;
 
     let artist_show = track.track_artist != track.album_artist;
     let track_len   = match artist_show {
@@ -261,26 +257,26 @@ fn render_track_row(
 
     let mut format = Format::color(playback_fg, bg);
     output.format(format);
-    output.push(playback);
-    output.push(" ");
+    output.pushc(playback);
+    output.pushc(' ');
 
     output.format(*format.fg(fg_y));
     output.push(track_number);
-    output.push(" ");
+    output.pushc(' ');
 
     output.format(*format.fg(fg_d));
     output.push(&track_name);
-    output.push(" ");
+    output.pushc(' ');
 
     if artist_show {
         output.format(*format.fg(Color::Gray));
     }
     output.push(&artist_name);
-    output.push(" ");
+    output.pushc(' ');
 
     output.format(*format.fg(fg_y));
     output.push(&duration);
-    output.push("  ");
+    output.extend(repeat(' ').take(2));
 }
 //-////////////////////////////////////////////////////////////////////////////
 //

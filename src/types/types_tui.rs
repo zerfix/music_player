@@ -149,6 +149,11 @@ impl TermState{
         self.output.push_str(s);
     }
 
+    /// Push char to buffer
+    pub fn pushc(&mut self, s: char) {
+        self.output.push(s);
+    }
+
     /// Repeat character to buffer
     pub fn extend<I: IntoIterator<Item = char>>(&mut self, iter: I) {
         self.output.extend(iter);
