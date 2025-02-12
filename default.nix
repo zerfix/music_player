@@ -4,6 +4,8 @@ pkgs.mkShell {
   buildInputs = with pkgs; [
     alsa-lib
     pkg-config
+    binutils
+    gcc
     glibc
     openssl
     rustc

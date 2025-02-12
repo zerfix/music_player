@@ -1,5 +1,6 @@
+use arrayvec::ArrayString;
 use color_eyre::Result;
-use std::fmt::Write;
+use crate::ui::utils::ui_text_util::fit_text_to_term;
 
 #[derive(Debug)]
 #[derive(Clone, Copy)]
@@ -40,7 +41,7 @@ pub enum Color {
 }
 
 impl Color {
-    pub fn rgb(self) -> Option<(u8,u8,u8)> {
+    pub const fn rgb(self) -> Option<(u8,u8,u8)> {
         match self {
             Color::Default => None,
 
@@ -67,110 +68,73 @@ pub struct Format {
     pub fg    : Color,
     pub bg    : Color,
     pub bold  : bool,
-    pub italic: bool,
 }
 
 impl Format {
-    pub fn new() -> Format {
-        Format{
-            fg: Color::Default,
-            bg: Color::Default,
-            bold: false,
-            italic: false,
-        }
-    }
-
-    pub fn color(fg: Color, bg: Color) -> Format {
-        Format{
-            fg,
-            bg,
-            bold: false,
-            italic: false,
-        }
-    }
-
-    pub fn fg(&mut self, fg: Color) -> &mut Format {
-        self.fg = fg;
-        self
-    }
-
-    pub fn bg(&mut self, bg: Color) -> &mut Format {
-        self.bg = bg;
-        self
-    }
-
-    pub fn bold(&mut self, bold: bool) -> &mut Format {
-        self.bold = bold;
-        self
-    }
-
-    pub fn italic(&mut self, italic: bool) -> &mut Format {
-        self.italic = italic;
-        self
-    }
-
-    pub fn output_term_codes(&self, buffer: &mut String) {
-        buffer.reserve(42);
-        buffer.push_str("\x1B[0");
+    pub fn output_term_codes(&self, output: &mut String, buffer: &mut itoa::Buffer) {
+        output.push_str("\x1B[0");
         if self.bold {
-            buffer.push_str(";1");
-        }
-        if self.italic {
-            buffer.push_str(";3");
+            output.push_str(";1");
         }
         if let Some((r,g,b)) = self.fg.rgb() {
-            write!(buffer, ";38;2;{:03};{:03};{:03}",r,g,b).unwrap();
+            for n in [38,2,r,g,b] {
+                output.push(';');
+                output.push_str(buffer.format(n));
+            }
         }
         if let Some((r,g,b)) = self.bg.rgb() {
-            write!(buffer, ";48;2;{:03};{:03};{:03}",r,g,b).unwrap();
+            for n in [48,2,r,g,b] {
+                output.push(';');
+                output.push_str(buffer.format(n));
+            }
         }
-        buffer.push('m');
+        output.push('m');
     }
 }
 
 pub struct TermState {
-    output: String,
+    pub frame   : String,
+    pub text_buf: String,
+    pub num_buf : itoa::Buffer,
 }
 
 impl TermState{
     pub fn new() -> TermState {
         TermState {
-            output: String::new(),
+            frame: String::with_capacity(32 * 1024),
+            text_buf: String::with_capacity(256),
+            num_buf: itoa::Buffer::new(),
         }
     }
 
     /// Prepares for new view
     pub fn clear(&mut self) {
-        self.output.clear();
-    }
-
-    /// Push string to buffer
-    pub fn push(&mut self, s: &str) {
-        self.output.push_str(s);
-    }
-
-    /// Push char to buffer
-    pub fn pushc(&mut self, s: char) {
-        self.output.push(s);
-    }
-
-    /// Repeat character to buffer
-    pub fn extend<I: IntoIterator<Item = char>>(&mut self, iter: I) {
-        self.output.extend(iter);
+        self.frame.clear();
     }
 
     /// Add newline
     pub fn newline(&mut self) {
-        self.push("\r\n");
+        self.frame.push_str("\r\n");
     }
 
     /// Add terminal formatting codes to buffer
     pub fn format(&mut self, format: Format) {
-        format.output_term_codes(&mut self.output);
+        format.output_term_codes(&mut self.frame, &mut self.num_buf);
+    }
+
+    /// Add text and make sure it fits within n cells
+    pub fn fit_str<const L: usize>(&mut self, prefix: Option<&str>, string: ArrayString<L>, len: usize) {
+        self.text_buf.clear();
+        if let Some(prefix) = prefix {
+            self.text_buf.push_str(prefix);
+        }
+        self.text_buf.push_str(&string);
+        fit_text_to_term(&mut self.text_buf, len);
+        self.frame.push_str(&self.text_buf);
     }
 
     /// Return buffer
     pub fn output(&mut self) -> &str {
-        &self.output
+        &self.frame
     }
 }

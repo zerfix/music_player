@@ -6,14 +6,17 @@ use unicode_width::UnicodeWidthChar;
 //
 //-//////////////////////////////////////////////////////////////////
 ///// Formats text to fit target number of cells in terminal.
-pub fn term_text(mut buf: String, target: usize) -> String {
+pub fn fit_text_to_term(buf: &mut String, target: usize) {
     let width = buf.chars().map(|c| c.width().unwrap_or(0)).sum::<usize>();
     let diff  = target as isize - width as isize;
 
     match (target, diff) {
         (_  ,  0 ) => {},
         (_  , 1..) => buf.extend(repeat(' ').take(diff as usize)),
-        (..4, ..0) => buf = ".".repeat(target),
+        (..4, ..0) => {
+            buf.clear();
+            buf.extend(repeat('.').take(target));
+        },
         (4.., ..0) => {
             let iterator = buf.chars().map(|c| (c.len_utf8(), c.width().unwrap_or(0)));
             let mut current = 0;
@@ -33,8 +36,6 @@ pub fn term_text(mut buf: String, target: usize) -> String {
             buf.extend(repeat(' ').take(remaining));
         }
     }
-
-    buf
 }
 
 //-//////////////////////////////////////////////////////////////////
@@ -92,17 +93,19 @@ mod tests {
         ].iter()
         .for_each(|test: &TextTest| {
             println!("Testing: {}", test.reference);
-            let reference = test.reference.to_string();
+            let reference = test.reference;
             {
-                let text = term_text(reference.clone(), test.ref_len);
+                let mut text = reference.to_string();
+                fit_text_to_term(&mut text, test.ref_len);
                 assert_eq!(text, reference);
                 assert_eq!(text.width(), test.ref_len);
             }
             test.tests.iter()
             .for_each(|sub_test| {
-                let text = term_text(reference.clone(), sub_test.target_len);
+                let mut text = reference.to_string();
+                fit_text_to_term(&mut text, sub_test.target_len);
                 println!("{}, {}, {}", text, text.len(), text.width());
-                assert_eq!(text, sub_test.result.to_string());
+                assert_eq!(text, sub_test.result);
                 assert_eq!(text.width(), sub_test.target_len);
             });
         });

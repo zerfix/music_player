@@ -15,7 +15,7 @@ pub enum PlaybackState {
     None,
     Played,
     Playing,
-    Qued,
+    Queued,
 }
 
 impl StatePlaylist {
@@ -48,7 +48,7 @@ impl StatePlaylist {
     pub fn replace(&mut self, list: Vec<TrackFile>, selected: usize) {
         self.list = list;
         self.selected = selected;
-    }
+   }
 
     pub fn append(&mut self, track: TrackFile) {
         self.list.push(track);
@@ -69,14 +69,14 @@ impl StatePlaylist {
                     .map(|(index, _)| match index as isize - self.selected as isize {
                         ..0 => PlaybackState::Played,
                          0  => PlaybackState::Playing,
-                        1.. => PlaybackState::Qued,
+                        1.. => PlaybackState::Queued,
                     })
                     .fold(PlaybackState::None, |acc, state| {
                         match (acc, state) {
                             (PlaybackState::Playing, _                     ) |
                             (_                     , PlaybackState::Playing) => PlaybackState::Playing,
-                            (PlaybackState::Qued   , _                     ) |
-                            (_                     , PlaybackState::Qued   ) => PlaybackState::Qued,
+                            (PlaybackState::Queued , _                     ) |
+                            (_                     , PlaybackState::Queued ) => PlaybackState::Queued,
                             (PlaybackState::Played , _                     ) |
                             (_                     , PlaybackState::Played ) => PlaybackState::Played,
                             (_                     , _                     ) => PlaybackState::None,
@@ -90,14 +90,14 @@ impl StatePlaylist {
                     .map(|(index, _)| match index as isize - self.selected as isize {
                         ..0 => PlaybackState::Played,
                          0  => PlaybackState::Playing,
-                        1.. => PlaybackState::Qued,
+                        1.. => PlaybackState::Queued,
                     })
                     .fold(PlaybackState::None, |acc, state| {
                         match (acc, state) {
                             (PlaybackState::Playing, _                     ) |
                             (_                     , PlaybackState::Playing) => PlaybackState::Playing,
-                            (PlaybackState::Qued   , _                     ) |
-                            (_                     , PlaybackState::Qued   ) => PlaybackState::Qued,
+                            (PlaybackState::Queued , _                     ) |
+                            (_                     , PlaybackState::Queued ) => PlaybackState::Queued,
                             (PlaybackState::Played , _                     ) |
                             (_                     , PlaybackState::Played ) => PlaybackState::Played,
                             (_                     , _                     ) => PlaybackState::None,
@@ -112,7 +112,7 @@ impl StatePlaylist {
             Some((index, _)) => match index as isize - self.selected as isize {
                 ..0 => PlaybackState::Played,
                  0  => PlaybackState::Playing,
-                1.. => PlaybackState::Qued,
+                1.. => PlaybackState::Queued,
             },
             None => PlaybackState::None,
         }

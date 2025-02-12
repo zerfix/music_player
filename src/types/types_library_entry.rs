@@ -6,6 +6,7 @@ use lofty::file::TaggedFileExt;
 use lofty::tag::Accessor;
 use std::cmp::Ordering;
 use std::path::Path;
+use std::str::FromStr;
 use std::time::Duration;
 use lofty::read_from_path;
 use lofty::prelude::ItemKey;
@@ -199,18 +200,18 @@ pub enum LibraryFilterEntry {
 }
 
 impl LibraryFilterEntry {
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> ArrayString<64> {
         match self {
-            LibraryFilterEntry::All => "ALL".to_string(),
+            LibraryFilterEntry::All => ArrayString::from_str("ALL"),
             LibraryFilterEntry::Artist(artist) => match artist.name_display {
-                Some(name) => name.to_string(),
-                None       => "<missing>".to_string(),
+                Some(name) => Ok(name),
+                None       => ArrayString::from_str("<missing>"),
             },
             LibraryFilterEntry::Year { year } => match year {
-                Some(year) => year.to_string(),
-                None       => "----".to_string(),
+                Some(year) => ArrayString::from_str(&year.to_string()),
+                None       => ArrayString::from_str("----"),
             },
-        }
+        }.unwrap()
     }
 }
 

@@ -30,6 +30,7 @@ crossbeam-channel = "0.5.14"
 directories = "6.0.0"
 toml = "0.8.20"
 serde = { version = "1.0", features = ["derive"] }
+itoa = "1.0.14"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
