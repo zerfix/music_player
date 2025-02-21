@@ -15,6 +15,7 @@ use crossbeam_channel::Sender;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
+use std::time::Instant;
 use std::collections::BTreeMap;
 use crate::types::types_library_entry::TrackFile;
 use crate::types::types_msg_channels::MsgChannels;
@@ -68,7 +69,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                         },
                     };
                     if let Err(err) = state.que(&path) {
-                        tx.state.send(StateActions::PlaybackNextTrack{error: Some(err)})?;
+                        tx.state.send((Instant::now(), StateActions::PlaybackNextTrack{error: Some(err)}))?;
                         continue;
                     }
                     state.start(tx.playback.clone(), start_at);
@@ -89,12 +90,12 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                         },
                     };
                     if let Err(err) = state.que(&path) {
-                        tx.state.send(StateActions::PlaybackNextTrack{error: Some(err)})?;
+                        tx.state.send((Instant::now(), StateActions::PlaybackNextTrack{error: Some(err)}))?;
                     }
                 },
                 PlaybackActions::Callback => {
                     state.next(tx.playback.clone());
-                    tx.state.send(StateActions::PlaybackNextTrack{error: None})?;
+                    tx.state.send((Instant::now(), StateActions::PlaybackNextTrack{error: None}))?;
                 },
                 PlaybackActions::Pause => {
                     state.pause();
@@ -107,7 +108,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                 },
                 PlaybackActions::Next => {
                     state.next(tx.playback.clone());
-                    tx.state.send(StateActions::PlaybackNextTrack { error: None })?;
+                    tx.state.send((Instant::now(), StateActions::PlaybackNextTrack { error: None }))?;
                 },
                 PlaybackActions::Clear => {
                     state.clear();

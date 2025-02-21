@@ -20,10 +20,10 @@ mod state {
 mod tasks {
     pub mod listener_input;
     pub mod listener_playback;
+    pub mod listener_render_delay;
     pub mod listener_scanner;
     pub mod listener_state;
     pub mod listener_tui;
-    pub mod loop_intervals;
 }
 mod traits {
     pub mod trait_listable;
@@ -68,11 +68,11 @@ use directories::BaseDirs;
 use std::fs::read_to_string;
 use crate::tasks::listener_input::start_input_listener;
 use crate::tasks::listener_playback::start_playback_listener;
+use crate::tasks::listener_render_delay::start_render_delay;
 use crate::tasks::listener_scanner::start_fs_scanner_listener;
 use crate::tasks::listener_state::start_state_listener;
 use crate::tasks::listener_tui::RenderActions;
 use crate::tasks::listener_tui::start_tui_listener;
-use crate::tasks::loop_intervals::start_intervals;
 use crate::types::config::Config;
 use crate::types::types_msg_channels::MsgChannels;
 
@@ -151,6 +151,7 @@ fn main() -> Result<(), Report> {
     let (tx_exit    , rx_exit    ) = bounded(1);
     let (tx_playback, rx_playback) = bounded(16);
     let (tx_state   , rx_state   ) = bounded(256);
+    let (tx_delay   , rx_delay   ) = bounded(1);
     let (tx_tui     , rx_tui     ) = bounded(1);
     let (tx_tui_done, rx_tui_done) = bounded(0);
 
@@ -158,11 +159,12 @@ fn main() -> Result<(), Report> {
         exit    : tx_exit.clone(),
         playback: tx_playback.clone(),
         state   : tx_state.clone(),
+        delay   : tx_delay.clone(),
         tui     : tx_tui.clone(),
     };
 
     // -- Create Threads --------------------------------------------
-    info!("Crating threads...");
+    info!("Creating threads...");
     {
         let _threads = [
             {
@@ -175,6 +177,10 @@ fn main() -> Result<(), Report> {
             },
             {
                 let channels = channels();
+                thread::spawn(move || start_render_delay(rx_delay, channels))
+            },
+            {
+                let channels = channels();
                 thread::spawn(move || start_state_listener(rx_state, channels))
             },
             {
@@ -184,10 +190,6 @@ fn main() -> Result<(), Report> {
             {
                 let channels = channels();
                 thread::spawn(move || start_input_listener(channels))
-            },
-            {
-                let channels = channels();
-                thread::spawn(move || start_intervals(channels))
             },
         ];
 

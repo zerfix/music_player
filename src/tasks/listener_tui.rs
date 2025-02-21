@@ -15,7 +15,6 @@ use crate::state::state_playlist::StatePlaylist;
 use crate::types::types_tui::TermSize;
 use crate::types::types_tui::TermState;
 use crate::MsgChannels;
-use crate::tasks::listener_state::StateActions;
 use crate::ui::views::view_library::RenderDataViewLibrary;
 use crate::ui::views::view_library::draw_library_view;
 
@@ -23,14 +22,11 @@ use crate::ui::views::view_library::draw_library_view;
 //
 //-////////////////////////////////////////////////////////////////////////////
 pub enum RenderActions {
-    RenderRequest{
-        render_start: Instant,
-        interval: u8,
-    },
     RenderFrame{
-        render_start  : Instant,
-        render_request: Duration,
-        render_state  : Duration,
+        render_start   : Instant,
+        render_received: Duration,
+        render_changed : Duration,
+        render_copied  : Duration,
         common: RenderDataCommon,
         view: RenderDataView,
     },
@@ -63,7 +59,7 @@ pub fn start_tui_listener(rx: Receiver<RenderActions>, tx: MsgChannels, tx_tui_d
 
     // -- Render Loop -----------------------------------------------
     info!("Running tui render loop");
-    if let Err(err) = render_loop(&mut stdout, rx, &tx) {
+    if let Err(err) = render_loop(&mut stdout, rx) {
         error!("Render error: {}", err);
         let _ = tx.exit.send(Err(err));
     };
@@ -83,29 +79,22 @@ pub fn start_tui_listener(rx: Receiver<RenderActions>, tx: MsgChannels, tx_tui_d
     tx_tui_done.send(()).unwrap();
 }
 
-fn render_loop(stdout: &mut Stdout, rx: Receiver<RenderActions>, tx: &MsgChannels) -> Result<()> {
+fn render_loop(stdout: &mut Stdout, rx: Receiver<RenderActions>) -> Result<()> {
     let mut term_state = TermState::new();
 
     loop {
         match rx.recv() {
             Err(err) => return Err(err.into()),
             Ok(msg) => match msg {
-                RenderActions::RenderRequest{render_start, interval} => {
-                    let term_size = TermSize::new().unwrap();
-                    tx.state.send(StateActions::Render{
-                        interval,
-                        render_start,
-                        render_request: render_start.elapsed(),
-                        term_size,
-                    }).context("Renderer requesting state from state thread")?
-                },
                 RenderActions::RenderFrame{
                     render_start,
-                    render_request,
-                    render_state,
+                    render_received,
+                    render_changed,
+                    render_copied,
                     common,
                     view
                 } => {
+                    let render_state = render_start.elapsed();
                     let term_size = TermSize::new().context("Getting terminal dimentions")?;
 
                     match view {
@@ -125,12 +114,14 @@ fn render_loop(stdout: &mut Stdout, rx: Receiver<RenderActions>, tx: &MsgChannel
                     let render_output = render_start.elapsed();
 
                     info!(
-                        "Render {:?}: start > request {:?} > copy state {:?} > render {:?} > output {:?}",
+                        "Render {:?}: input > received {:?} > changed state {:?} > copied state {:?} > received state {:?} > render {:?} > output {:?}",
                         render_output,
-                        render_request,
-                        render_state  - render_request,
-                        render_layout - render_state,
-                        render_output - render_layout,
+                        render_received,
+                        render_changed - render_received,
+                        render_copied  - render_changed,
+                        render_state   - render_copied,
+                        render_layout  - render_state,
+                        render_output  - render_layout,
                     );
 
                     term_state.clear();

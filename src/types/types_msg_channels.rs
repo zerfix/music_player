@@ -3,6 +3,7 @@ use crossbeam_channel::Sender;
 use crate::tasks::listener_playback::PlaybackActions;
 use crate::tasks::listener_state::StateActions;
 use crate::tasks::listener_tui::RenderActions;
+use std::time::Instant;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -12,7 +13,8 @@ use crate::tasks::listener_tui::RenderActions;
 pub struct MsgChannels {
     pub exit    : Sender<Result<String>>,
     pub playback: Sender<PlaybackActions>,
-    pub state   : Sender<StateActions>,
+    pub state   : Sender<(Instant, StateActions)>,
+    pub delay   : Sender<Instant>,
     pub tui     : Sender<RenderActions>,
 }
 //-////////////////////////////////////////////////////////////////////////////

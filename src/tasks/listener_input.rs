@@ -4,6 +4,7 @@ use crossterm::event::KeyCode;
 use crossterm::event::KeyModifiers;
 use crossterm::event::MouseEventKind;
 use crossterm::event;
+use std::time::Instant;
 use std::time::Duration;
 use crate::enums::enum_input::InputGlobal;
 use crate::tasks::listener_state::StateActions;
@@ -21,8 +22,8 @@ pub fn start_input_listener(tx: MsgChannels) {
 }
 
 fn input_loop(tx: &MsgChannels) -> Result<()> {
-    let send_l = |input: InputLocal | tx.state.send(StateActions::InputLocal(input));
-    let send_g = |input: InputGlobal| tx.state.send(StateActions::InputGlobal(input));
+    let send_l = |input: InputLocal | tx.state.send((Instant::now(), StateActions::InputLocal(input)));
+    let send_g = |input: InputGlobal| tx.state.send((Instant::now(), StateActions::InputGlobal(input)));
 
     loop {
         if event::poll(Duration::from_secs(60*60)).is_ok() {
@@ -72,6 +73,7 @@ fn input_loop(tx: &MsgChannels) -> Result<()> {
                         KeyCode::Char('q') => tx.exit.send(Ok("".to_string()))?,
                         _ => (),
                     },
+                    Event::Resize(columns, rows) => tx.state.send((Instant::now(), StateActions::Resize { height: rows, width: columns }))?,
                     _ => (),
                 }
             }
