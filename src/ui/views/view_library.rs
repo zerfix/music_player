@@ -56,7 +56,10 @@ pub fn draw_library_view(
                 view.column_selected == LibraryColumn::Filter,
                 i == view.left_selected,
             ),
-            None => output.frame.extend(repeat(' ').take(filter_width)),
+            None => {
+                output.format(Format { fg: Color::Default, bg: Color::Default, bold: false });
+                output.frame.extend(repeat(' ').take(filter_width));
+            },
         };
 
         output.format(Format{fg: Color::Blue, bg: Color::Default, bold: false});
@@ -76,7 +79,10 @@ pub fn draw_library_view(
                 view.column_selected == LibraryColumn::Tracks,
                 i == view.right_selected,
             ),
-            None => output.frame.extend(repeat(' ').take(track_width)),
+            None => {
+                output.format(Format { fg: Color::Default, bg: Color::Default, bold: false });
+                output.frame.extend(repeat(' ').take(track_width));
+            },
         }
     }
 }
