@@ -101,11 +101,9 @@ impl<'a, T: Clone + Debug + Eq + Ord + Listable> SortedListState<T> {
             self.entries.insert(index, element);
             if first_selectable >= index {
                 self.select_start();
-            } else {
-                if index <= self.selected {
-                    self.scroll_anchor += 1;
-                    self.selected += 1;
-                }
+            } else if index <= self.selected {
+                self.scroll_anchor += 1;
+                self.selected += 1;
             }
         }
     }

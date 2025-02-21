@@ -70,7 +70,7 @@ impl Config {
         // write default
         let conf_dir = conf_path.parent().context("Getting parrent folder of config file to make sure it exsists before trying to writie config")?;
         if !conf_dir.exists() {create_dir_all(conf_dir).context(format!("Create all parrent folders of config file: {}", conf_dir.to_str().unwrap()))?}
-        write(&conf_path, &config_file_str).context(format!("Writing default config file at {}", conf_path.to_str().unwrap()))?;
+        write(conf_path, &config_file_str).context(format!("Writing default config file at {}", conf_path.to_str().unwrap()))?;
 
         Ok(config_file)
     }

@@ -96,7 +96,7 @@ fn main() -> Result<(), Report> {
             if !config_path.exists() {
                 let config = Config::write_default(&config_path)?;
                 println!("Config written to: {}", config_path.to_str().unwrap());
-                match config.media_dirs.get(0) {
+                match config.media_dirs.first() {
                     Some(dir) => println!(
                         "Modify to specify music folder paths or re-run to use default {} dir",
                         dir.to_str().unwrap()
@@ -109,7 +109,7 @@ fn main() -> Result<(), Report> {
             let config = read_to_string(&config_path).context(format!("Reading config file at {}", config_path.to_str().unwrap()))
                 .and_then(|str| toml::from_str::<Config>(&str).context(format!("Parsing config file at {}", config_path.to_str().unwrap())))?;
 
-            if config.media_dirs.len() == 0 {
+            if config.media_dirs.is_empty() {
                 println!("Please add your music directory to the config file at {}", config_path.to_str().unwrap());
                 return Ok(())
             }
@@ -204,7 +204,7 @@ fn main() -> Result<(), Report> {
                 match msg {
                     Err(err) => return Err(err),
                     Ok(msg) => {
-                        if &msg != "" {
+                        if !msg.is_empty() {
                             info!("Exit msg: {}", msg);
                             println!("{}", msg);
                         }

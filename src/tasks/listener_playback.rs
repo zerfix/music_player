@@ -24,8 +24,8 @@ use crate::tasks::listener_state::StateActions;
 //-//////////////////////////////////////////////////////////////////
 pub enum PlaybackActions {
     NewTrack{track_id: u64, path: Box<Path>},
-    Play{track: TrackFile, start_at: Option<Duration>},
-    Que{track: TrackFile},
+    Play{track: Box<TrackFile>, start_at: Option<Duration>},
+    Que{track: Box<TrackFile>},
     Pause,
     Resume,
     /// duration from start of track
@@ -68,7 +68,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                             continue;
                         },
                     };
-                    if let Err(err) = state.que(&path) {
+                    if let Err(err) = state.que(path) {
                         tx.state.send((Instant::now(), StateActions::PlaybackNextTrack{error: Some(err)}))?;
                         continue;
                     }
@@ -89,7 +89,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                             continue;
                         },
                     };
-                    if let Err(err) = state.que(&path) {
+                    if let Err(err) = state.que(path) {
                         tx.state.send((Instant::now(), StateActions::PlaybackNextTrack{error: Some(err)}))?;
                     }
                 },

@@ -43,7 +43,7 @@ pub enum LibraryColumn {
     Tracks,
 }
 
-impl<'a> StateLibrary {
+impl StateLibrary {
     pub fn init() -> StateLibrary {
         let mut filter = SortedListState::new(true);
         filter.add(LibraryFilterEntry::All);
@@ -108,8 +108,7 @@ impl<'a> StateLibrary {
                         self.selected_tab = LibraryTab::iter()
                             .cycle()
                             .skip_while(|x| *x != self.selected_tab)
-                            .skip(1)
-                            .next()
+                            .nth(1)
                             .unwrap();
                         self.refresh_filter_list();
                     },
@@ -118,8 +117,7 @@ impl<'a> StateLibrary {
                             .rev()
                             .cycle()
                             .skip_while(|x| *x != self.selected_tab)
-                            .skip(1)
-                            .next()
+                            .nth(1)
                             .unwrap();
                         self.refresh_filter_list();
                     },
@@ -157,12 +155,12 @@ impl<'a> StateLibrary {
             LibraryFilterEntry::Year{year} => *year == track.year,
         };
         if add_to_track_list {
-            if let None = self.list_tracks.entries().iter().find(|e| e.album_title == track.album_title) {
-                let mut track = track.clone();
+            if !self.list_tracks.entries().iter().any(|e| e.album_title == track.album_title) {
+                let mut track = track;
                 track.is_album_padding = true;
                 self.list_tracks.add(track);
             }
-            self.list_tracks.add(track.clone());
+            self.list_tracks.add(track);
         }
 
         // add to tracks
@@ -200,7 +198,7 @@ impl<'a> StateLibrary {
             .flat_map(|track| {
                 match track.track_number {
                     Some(1) => {
-                        let mut header = track.clone();
+                        let mut header = track;
                         header.is_album_padding = true;
                         vec![
                             header,

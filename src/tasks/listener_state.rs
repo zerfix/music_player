@@ -20,7 +20,7 @@ pub enum StateActions {
     InputGlobal(InputGlobal),
     PlaybackNextTrack{error: Option<Report>},
     ScanIsScanning{is_scanning: bool}, // used to show user if scanning on startup
-    ScanAddSong{track: TrackFile},
+    ScanAddSong{track: Box<TrackFile>},
     ScanIndicatorRotate(u8),
     Resize{height: u16, width: u16},
     Render(),
@@ -58,13 +58,13 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                                         tx.playback.send(PlaybackActions::Clear).unwrap();
                                         if let Some(track) = playlist.get_current_track() {
                                             tx.playback.send(PlaybackActions::Play {
-                                                track,
+                                                track: Box::new(track),
                                                 start_at: None,
                                             }).unwrap();
                                         }
                                         if let Some(track) = playlist.get_next_track() {
                                             tx.playback.send(PlaybackActions::Que {
-                                                track,
+                                                track: Box::new(track),
                                             }).unwrap();
                                         }
                                     },
@@ -85,13 +85,13 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                                     tx.playback.send(PlaybackActions::Clear).unwrap();
                                     if let Some(track) = playlist.get_current_track() {
                                         tx.playback.send(PlaybackActions::Play {
-                                            track,
+                                            track: Box::new(track),
                                             start_at: None,
                                         }).unwrap();
                                     }
                                     if let Some(track) = playlist.get_next_track() {
                                         tx.playback.send(PlaybackActions::Que {
-                                            track,
+                                            track: Box::new(track),
                                         }).unwrap();
                                     }
                                 },
@@ -112,7 +112,7 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                         state.mutate(|_, _, playlist| {
                             playlist.next();
                             if let Some(track) = playlist.get_next_track() {
-                                tx.playback.send(PlaybackActions::Que{track}).unwrap();
+                                tx.playback.send(PlaybackActions::Que{track: Box::new(track)}).unwrap();
                             }
                         });
                     },
@@ -123,7 +123,7 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                     },
                     StateActions::ScanAddSong { track } => {
                         state.mutate(|_, library, _| {
-                            library.new_track(track);
+                            library.new_track(*track);
                             info!("{} tracks", library.tracks.len());
                         })
                     },

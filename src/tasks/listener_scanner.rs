@@ -21,7 +21,7 @@ use crate::ui::utils::ui_loading_icon_util::LOADING_ICONS_LEN;
 //
 //-////////////////////////////////////////////////////////////////////////////
 // from: https://github.com/Serial-ATA/lofty-rs/blob/aa1ec31ea6f2d6f08cc034cea6aad50923fc5f07/lofty/src/file/file_type.rs#L130
-const EXTENSIONS: [&'static str; 26] = [
+const EXTENSIONS: [&str; 26] = [
     "aac",
     "ape",
     "aiff",
@@ -82,7 +82,7 @@ fn scan_directory(scope: &Scope, dir: PathBuf, tx: MsgChannels) {
                     let tx_playback = tx.playback.clone();
                     scope.spawn(move |_| match TrackFile::new(&path) {
                         Ok(track) => {
-                            tx_state.send((Instant::now(), StateActions::ScanAddSong{track})).unwrap();
+                            tx_state.send((Instant::now(), StateActions::ScanAddSong{track: Box::new(track)})).unwrap();
                             tx_playback.send(PlaybackActions::NewTrack{track_id: track.id_track, path: path.into_boxed_path()}).unwrap();
                         },
                         Err(e) => error!("Parse track error: {:?} {:?}", path, e),

@@ -54,7 +54,7 @@ pub enum InputGlobalEffect {
     PlayPause,
     ReplaceTracksAndPlay{tracks: Vec<TrackFile>, index: usize},
     AppendTracks(Vec<TrackFile>),
-    AppendTrack(TrackFile),
+    AppendTrack(Box<TrackFile>),
     ClearTracks,
 }
 

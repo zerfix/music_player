@@ -302,7 +302,6 @@ fn render_track_row(
                 true  => format_white,
                 false => Format{fg: Color::Gray, bg: Color::Default, bold: false},
             };
-            let len_artist = len_artist;
             output.format(format);
             output.fit_str(Some(" - "), artist, len_artist);
         }
