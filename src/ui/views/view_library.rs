@@ -1,6 +1,7 @@
 use std::iter::repeat;
 use std::str::FromStr;
 use arrayvec::ArrayString;
+use unicode_width::UnicodeWidthStr;
 use std::fmt::Write;
 use crate::state::state_library::LibraryColumn;
 use crate::state::state_library::LibraryTab;
@@ -112,7 +113,7 @@ fn render_header(
     let len_extra = {
         let name: &'static str = library_tab.into();
         output.frame.push_str(name);
-        width.saturating_sub(2 + name.len())
+        width.saturating_sub(2 + name.width())
     };
 
     output.frame.extend(repeat(' ').take(len_extra));
@@ -182,14 +183,14 @@ fn render_album_row(
     let len_line = {
         let format = Format{fg: Color::Default, bg: Color::Default, bold: true};
         let album_name = track.album_title.unwrap_or(ArrayString::from_str("<missing>").unwrap());
-        let len_album = match len_dynamic.saturating_sub(album_name.len()) {
+        let len_album = match len_dynamic.saturating_sub(album_name.width()) {
             ..2 => len_dynamic,
-            2.. => album_name.len(),
+            2.. => album_name.width(),
         };
         output.format(format);
         output.fit_str(None, album_name, len_album);
 
-        len_dynamic.saturating_sub(album_name.len())
+        len_dynamic.saturating_sub(album_name.width())
     };
 
     // blue line
@@ -282,13 +283,13 @@ fn render_track_row(
     // track name
     let len_artist = {
         let track_name = track.track_title;
-        let len_track = match len_dynamic.saturating_sub(track_name.len()) {
+        let len_track = match len_dynamic.saturating_sub(track_name.width()) {
             0   => len_dynamic,
-            1.. => track_name.len(),
+            1.. => track_name.width(),
         };
         output.format(format_white);
         output.fit_str(None, track_name, len_track);
-        len_dynamic.saturating_sub(track_name.len())
+        len_dynamic.saturating_sub(track_name.width())
     };
 
     // artist name
