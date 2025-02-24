@@ -1,12 +1,12 @@
+use crate::tasks::listener_state::StateActions;
+use crate::types::types_msg_channels::MsgChannels;
+use crate::CONFIG;
 use color_eyre::eyre::eyre;
 use color_eyre::Result;
 use crossbeam_channel::Receiver;
 use std::thread::sleep;
 use std::time::Duration;
 use std::time::Instant;
-use crate::tasks::listener_state::StateActions;
-use crate::types::types_msg_channels::MsgChannels;
-use crate::CONFIG;
 
 //-//////////////////////////////////////////////////////////////////
 pub fn start_render_delay(rx: Receiver<Instant>, tx: MsgChannels) {

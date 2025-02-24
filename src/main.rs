@@ -33,8 +33,8 @@ mod ui {
         pub mod model_component_list_state;
     }
     pub mod utils {
-        pub mod ui_text_util;
         pub mod ui_loading_icon_util;
+        pub mod ui_text_util;
     }
     pub mod views {
         pub mod view_library;
@@ -43,38 +43,36 @@ mod ui {
 }
 mod types {
     pub mod config;
-    pub mod types_tui;
     pub mod types_library_entry;
     pub mod types_msg_channels;
+    pub mod types_tui;
 }
 //-////////////////////////////////////////////////////////////////////////////
 
-use color_eyre::Report;
-use color_eyre::Section;
-use color_eyre::eyre::Context;
-use color_eyre::eyre::ContextCompat;
-use crossbeam_channel::bounded;
-use static_init::dynamic;
-use std::fs::File;
-use std::panic;
-use std::path::PathBuf;
-use std::sync::OnceLock;
-use std::thread;
-use tracing::metadata::LevelFilter;
-use tracing_subscriber::prelude::*;
-use mimalloc::MiMalloc;
-use directories::ProjectDirs;
-use directories::BaseDirs;
-use std::fs::read_to_string;
 use crate::tasks::listener_input::start_input_listener;
 use crate::tasks::listener_playback::start_playback_listener;
 use crate::tasks::listener_render_delay::start_render_delay;
 use crate::tasks::listener_scanner::start_fs_scanner_listener;
 use crate::tasks::listener_state::start_state_listener;
-use crate::tasks::listener_tui::RenderActions;
 use crate::tasks::listener_tui::start_tui_listener;
+use crate::tasks::listener_tui::RenderActions;
 use crate::types::config::Config;
 use crate::types::types_msg_channels::MsgChannels;
+use color_eyre::eyre::Context;
+use color_eyre::eyre::ContextCompat;
+use color_eyre::Report;
+use color_eyre::Section;
+use crossbeam_channel::bounded;
+use directories::ProjectDirs;
+use mimalloc::MiMalloc;
+use static_init::dynamic;
+use std::fs::read_to_string;
+use std::fs::File;
+use std::panic;
+use std::sync::OnceLock;
+use std::thread;
+use tracing::metadata::LevelFilter;
+use tracing_subscriber::prelude::*;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -87,31 +85,39 @@ fn main() -> Result<(), Report> {
 
     // -- Init ------------------------------------------------------
     {
-        let base_dirs    = BaseDirs::new().context("Getting base directory paths")?;
-        let project_dirs = ProjectDirs::from("", "", "music_player").context("Getting project paths")?;
-        let config_path  = project_dirs.config_dir().join("config.toml");
+        let config_path = ProjectDirs::from("", "", "music_player")
+            .context("Getting project paths")?
+            .config_dir()
+            .join("config.toml");
 
         // -- Config ----------------------------
         {
             if !config_path.exists() {
                 let config = Config::write_default(&config_path)?;
-                println!("Config written to: {}", config_path.to_str().unwrap());
+                println!("Config written to: {}", config_path.to_string_lossy());
                 match config.media_dirs.first() {
                     Some(dir) => println!(
-                        "Modify to specify music folder paths or re-run to use default {} dir",
-                        dir.to_str().unwrap()
+                        "Modify config file to specify your music folder paths or re-run to use default {} dir",
+                        dir.to_string_lossy(),
                     ),
-                    None => println!("Please add your music directory to the config file")
+                    None => println!(
+                        "Please add your music directory to the config file at {}",
+                        config_path.to_string_lossy()
+                    ),
                 }
-                return Ok(())
+                return Ok(());
             }
 
-            let config = read_to_string(&config_path).context(format!("Reading config file at {}", config_path.to_str().unwrap()))
-                .and_then(|str| toml::from_str::<Config>(&str).context(format!("Parsing config file at {}", config_path.to_str().unwrap())))?;
+            let config_raw = read_to_string(&config_path)
+                .context(format!("Reading config file at {}", config_path.to_string_lossy()))?;
+            let config_parsed: Config = toml::from_str(&config_raw)
+                .context(format!("Parsing config file at {}", config_path.to_string_lossy()))?;
+            let config = config_parsed.fix_home_dir_paths()
+                .context("Replacing ~ with full path")?;
 
             if config.media_dirs.is_empty() {
-                println!("Please add your music directory to the config file at {}", config_path.to_str().unwrap());
-                return Ok(())
+                println!("Please add your music directory to the config file at {}", config_path.to_string_lossy());
+                return Ok(());
             }
 
             CONFIG.set(config).unwrap();
@@ -121,25 +127,19 @@ fn main() -> Result<(), Report> {
         {
             let config = &CONFIG.get().unwrap().logging;
             if config.enable_logging {
-                let log_path: &PathBuf = match config.log_path.starts_with("~") {
-                    false => &config.log_path,
-                    true => &{
-                        let mut buf = base_dirs.home_dir().to_path_buf();
-                        buf.push(config.log_path.strip_prefix("~/").context("Removing ~/ prefix from log_path so it can be replaced with full home dir path")?);
-                        buf
-                    }
-                };
-                let file = File::create(log_path)
-                    .context(format!("Trying to create log file at {}", config.log_path.to_str().unwrap_or("<err>")))
-                    .note(format!("Double check the `log_path` value in your configuration file at {}", config_path.to_str().unwrap_or("<err>")))?;
+                let file = File::create(&config.log_path)
+                    .context(format!("Trying to create log file at {}", config.log_path.to_string_lossy()))
+                    .note(format!(
+                        "Double check the `log_path` value in your configuration file at {}",
+                        config_path.to_string_lossy(),
+                    ))?;
                 let file_log = tracing_subscriber::fmt::layer()
                     .with_writer(file)
                     .with_filter(LevelFilter::from_level(config.log_level.to_level()));
-                tracing_subscriber::registry()
-                    .with(file_log)
-                    .init();
+                tracing_subscriber::registry().with(file_log).init();
             }
 
+            // log hook on thread panic
             panic::set_hook(Box::new(|panic_info| {
                 error!("Thread {}", panic_info.to_string().replacen(":\n", ": ", 1));
             }));

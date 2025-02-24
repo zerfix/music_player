@@ -1,15 +1,15 @@
+use crate::enums::enum_input::InputGlobal;
+use crate::enums::enum_input::InputLocal;
+use crate::tasks::listener_state::StateActions;
+use crate::types::types_msg_channels::MsgChannels;
 use color_eyre::Result;
+use crossterm::event;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyModifiers;
 use crossterm::event::MouseEventKind;
-use crossterm::event;
-use std::time::Instant;
 use std::time::Duration;
-use crate::enums::enum_input::InputGlobal;
-use crate::tasks::listener_state::StateActions;
-use crate::types::types_msg_channels::MsgChannels;
-use crate::enums::enum_input::InputLocal;
+use std::time::Instant;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -73,7 +73,10 @@ fn input_loop(tx: &MsgChannels) -> Result<()> {
                         KeyCode::Char('q') => tx.exit.send(Ok("".to_string()))?,
                         _ => (),
                     },
-                    Event::Resize(columns, rows) => tx.state.send((Instant::now(), StateActions::Resize { height: rows, width: columns }))?,
+                    Event::Resize(columns, rows) => tx.state.send((
+                        Instant::now(),
+                        StateActions::Resize { height: rows, width: columns }
+                    ))?,
                     _ => (),
                 }
             }

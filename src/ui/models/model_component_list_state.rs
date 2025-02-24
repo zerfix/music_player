@@ -1,5 +1,5 @@
-use std::fmt::Debug;
 use crate::traits::trait_listable::Listable;
+use std::fmt::Debug;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -127,10 +127,7 @@ impl<'a, T: Clone + Debug + Eq + Ord + Listable> SortedListState<T> {
             .collect::<Vec<T>>();
         let selected = self.selected.saturating_sub(self.scroll_anchor);
 
-        (
-            viewable_elements,
-            selected,
-        )
+        (viewable_elements, selected)
     }
 
     fn update_scroll(&mut self, render_height: usize) {
@@ -177,14 +174,12 @@ mod tests {
     #[derive(Clone, Copy)]
     #[derive(Debug)]
     #[derive(PartialEq, Eq, PartialOrd, Ord)]
-    struct DummyElement{
+    struct DummyElement {
         selectable: bool,
     }
     impl DummyElement {
         pub fn new(selectable: bool) -> DummyElement {
-            DummyElement{
-                selectable,
-            }
+            DummyElement{selectable}
         }
     }
     impl Listable for DummyElement {
@@ -297,7 +292,6 @@ mod tests {
         state.add(DummyElement::new(true ));
         state.add(DummyElement::new(true ));
 
-
         assert_eq!(state, SortedListState{
             unique       : false,
             selected     : 1,
@@ -309,8 +303,6 @@ mod tests {
                 DummyElement::new(true ),
             ],
         });
-
-
     }
 }
 

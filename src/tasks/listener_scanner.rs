@@ -1,3 +1,10 @@
+use crate::tasks::listener_playback::PlaybackActions;
+use crate::tasks::listener_state::StateActions;
+use crate::types::types_library_entry::TrackFile;
+use crate::types::types_msg_channels::MsgChannels;
+use crate::ui::utils::ui_loading_icon_util::LOADING_ICONS_LEN;
+use crate::CONFIG;
+use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use rayon::Scope;
 use rayon::ThreadPoolBuilder;
@@ -10,12 +17,6 @@ use std::thread::sleep;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
-use crate::CONFIG;
-use crate::tasks::listener_playback::PlaybackActions;
-use crate::tasks::listener_state::StateActions;
-use crate::types::types_library_entry::TrackFile;
-use crate::types::types_msg_channels::MsgChannels;
-use crate::ui::utils::ui_loading_icon_util::LOADING_ICONS_LEN;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -61,7 +62,6 @@ pub fn start_fs_scanner_listener(tx: MsgChannels) {
     }
 }
 
-
 fn scan_directory(scope: &Scope, dir: PathBuf, tx: MsgChannels) {
     if let Ok(dir) = fs::read_dir(dir) {
         for entry in dir.into_iter().filter_map(|e| e.ok()) {
@@ -76,14 +76,21 @@ fn scan_directory(scope: &Scope, dir: PathBuf, tx: MsgChannels) {
                 continue;
             }
             if path.is_file() {
-                let extention = path.extension().unwrap_or_default().to_str().unwrap_or_default();
-                if EXTENSIONS.contains(&extention) {
+                let extension = path.extension().unwrap_or_default().to_str().unwrap_or_default();
+                if EXTENSIONS.contains(&extension) {
                     let tx_state = tx.state.clone();
                     let tx_playback = tx.playback.clone();
                     scope.spawn(move |_| match TrackFile::new(&path) {
                         Ok(track) => {
-                            tx_state.send((Instant::now(), StateActions::ScanAddSong{track: Box::new(track)})).unwrap();
-                            tx_playback.send(PlaybackActions::NewTrack{track_id: track.id_track, path: path.into_boxed_path()}).unwrap();
+                            tx_state
+                                .send((Instant::now(), StateActions::ScanAddSong { track: Box::new(track) }))
+                                .unwrap();
+                            tx_playback
+                                .send(PlaybackActions::NewTrack {
+                                    track_id: track.id_track,
+                                    path: path.into_boxed_path(),
+                                })
+                                .unwrap();
                         },
                         Err(e) => error!("Parse track error: {:?} {:?}", path, e),
                     });
@@ -95,7 +102,7 @@ fn scan_directory(scope: &Scope, dir: PathBuf, tx: MsgChannels) {
 }
 
 fn scanner_loop(tx: &MsgChannels) -> Result<()> {
-    let dirs = &CONFIG.get().unwrap().media_dirs;
+    let dirs = &CONFIG.get().ok_or_eyre("Config not initialized")?.media_dirs;
 
     tx.state.send((Instant::now(), StateActions::ScanIsScanning { is_scanning: true }))?;
     info!("Starting scan of '{:?}'", dirs);
@@ -103,7 +110,7 @@ fn scanner_loop(tx: &MsgChannels) -> Result<()> {
 
     let _ = {
         let tx = tx.clone();
-        thread::spawn(move|| {
+        thread::spawn(move || {
             info!("Starting disk read indicator");
             let full_rotation_sec = 1.0 / 2.0;
             let single_tick       = Duration::from_secs_f64(full_rotation_sec / LOADING_ICONS_LEN as f64);

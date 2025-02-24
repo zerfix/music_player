@@ -1,7 +1,6 @@
 use std::iter::repeat;
 use unicode_width::UnicodeWidthChar;
 
-
 //-//////////////////////////////////////////////////////////////////
 //
 //-//////////////////////////////////////////////////////////////////
@@ -34,7 +33,7 @@ pub fn fit_text_to_term(buf: &mut String, target: usize) {
             buf.truncate(current);
             buf.extend(repeat('.').take(3));
             buf.extend(repeat(' ').take(remaining));
-        }
+        },
     }
 }
 
@@ -100,8 +99,7 @@ mod tests {
                 assert_eq!(text, reference);
                 assert_eq!(text.width(), test.ref_len);
             }
-            test.tests.iter()
-            .for_each(|sub_test| {
+            test.tests.iter().for_each(|sub_test| {
                 let mut text = reference.to_string();
                 fit_text_to_term(&mut text, sub_test.target_len);
                 println!("{}, {}, {}", text, text.len(), text.width());

@@ -1,6 +1,6 @@
+use crate::ui::utils::ui_text_util::fit_text_to_term;
 use arrayvec::ArrayString;
 use color_eyre::Result;
-use crate::ui::utils::ui_text_util::fit_text_to_term;
 
 #[derive(Debug)]
 #[derive(Clone, Copy)]
@@ -65,9 +65,9 @@ impl Color {
 #[derive(Clone, Copy)]
 #[derive(PartialEq, Eq)]
 pub struct Format {
-    pub fg    : Color,
-    pub bg    : Color,
-    pub bold  : bool,
+    pub fg  : Color,
+    pub bg  : Color,
+    pub bold: bool,
 }
 
 impl Format {
@@ -98,7 +98,7 @@ pub struct TermState {
     pub num_buf : itoa::Buffer,
 }
 
-impl TermState{
+impl TermState {
     pub fn new() -> TermState {
         TermState {
             frame: String::with_capacity(32 * 1024),

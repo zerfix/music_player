@@ -1,25 +1,25 @@
+use crate::tasks::listener_state::StateActions;
+use crate::types::types_library_entry::TrackFile;
+use crate::types::types_msg_channels::MsgChannels;
 use awedio::backends::CpalBackend;
 use awedio::manager::Manager;
-use awedio::Sound;
-use awedio::sounds::MemorySound;
 use awedio::sounds::open_file;
 use awedio::sounds::wrappers::CompletionNotifier;
 use awedio::sounds::wrappers::Controller;
 use awedio::sounds::wrappers::Pausable;
+use awedio::sounds::MemorySound;
+use awedio::Sound;
 use color_eyre::eyre::Context;
 use color_eyre::Result;
-use std::collections::VecDeque;
-use std::path::Path;
 use crossbeam_channel::Receiver;
 use crossbeam_channel::Sender;
+use std::collections::BTreeMap;
+use std::collections::VecDeque;
+use std::path::Path;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use std::time::Instant;
-use std::collections::BTreeMap;
-use crate::types::types_library_entry::TrackFile;
-use crate::types::types_msg_channels::MsgChannels;
-use crate::tasks::listener_state::StateActions;
 
 //-//////////////////////////////////////////////////////////////////
 pub enum PlaybackActions {
@@ -113,7 +113,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                 PlaybackActions::Clear => {
                     state.clear();
                 },
-            }
+            },
         }
     }
 }
@@ -123,7 +123,7 @@ struct PlaybackManager {
     backend: CpalBackend,
     current_controller: Option<Controller<Pausable<CompletionNotifier<MemorySound>>>>,
     current_notifier: Option<JoinHandle<()>>,
-    que: VecDeque::<MemorySound>
+    que: VecDeque<MemorySound>,
 }
 
 impl PlaybackManager {
@@ -164,11 +164,8 @@ impl PlaybackManager {
         start_at: Option<Duration>,
     ) {
         if let Some(sound) = self.que.front() {
-            let (sound, notifier) = sound.clone()
-                .with_completion_notifier();
-            let (mut sound, controller) = sound
-                .pausable()
-                .controllable();
+            let (    sound, notifier  ) = sound.clone().with_completion_notifier();
+            let (mut sound, controller) = sound.pausable().controllable();
 
             if let Some(duration) = start_at {
                 let _ = sound.skip(duration);

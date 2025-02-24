@@ -1,3 +1,9 @@
+use crate::state::state_playlist::StatePlaylist;
+use crate::types::types_tui::TermSize;
+use crate::types::types_tui::TermState;
+use crate::ui::views::view_library::draw_library_view;
+use crate::ui::views::view_library::RenderDataViewLibrary;
+use crate::MsgChannels;
 use color_eyre::eyre::Context;
 use color_eyre::Result;
 use crossbeam_channel::Receiver;
@@ -8,15 +14,9 @@ use crossterm::execute;
 use crossterm::style::Print;
 use crossterm::terminal;
 use std::io::stdout;
+use std::io::Stdout;
 use std::time::Duration;
 use std::time::Instant;
-use std::io::Stdout;
-use crate::state::state_playlist::StatePlaylist;
-use crate::types::types_tui::TermSize;
-use crate::types::types_tui::TermState;
-use crate::MsgChannels;
-use crate::ui::views::view_library::RenderDataViewLibrary;
-use crate::ui::views::view_library::draw_library_view;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -92,7 +92,7 @@ fn render_loop(stdout: &mut Stdout, rx: Receiver<RenderActions>) -> Result<()> {
                     render_changed,
                     render_copied,
                     common,
-                    view
+                    view,
                 } => {
                     let render_state = render_start.elapsed();
                     let term_size = TermSize::new().context("Getting terminal dimentions")?;
@@ -127,9 +127,9 @@ fn render_loop(stdout: &mut Stdout, rx: Receiver<RenderActions>) -> Result<()> {
                     term_state.clear();
                 },
                 RenderActions::Exit => return Ok(()),
-            }
+            },
         };
-    };
+    }
 }
 //-////////////////////////////////////////////////////////////////////////////
 //

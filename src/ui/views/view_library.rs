@@ -1,20 +1,19 @@
-use std::iter::repeat;
-use std::str::FromStr;
-use arrayvec::ArrayString;
-use unicode_width::UnicodeWidthStr;
-use std::fmt::Write;
 use crate::state::state_library::LibraryColumn;
 use crate::state::state_library::LibraryTab;
 use crate::state::state_playlist::PlaybackState;
 use crate::tasks::listener_tui::RenderDataCommon;
 use crate::types::types_library_entry::LibraryFilterEntry;
 use crate::types::types_library_entry::TrackFile;
-use crate::types::types_tui::TermState;
 use crate::types::types_tui::Color;
 use crate::types::types_tui::Format;
 use crate::types::types_tui::TermSize;
+use crate::types::types_tui::TermState;
 use crate::ui::utils::ui_loading_icon_util::loading_icon;
-
+use arrayvec::ArrayString;
+use std::fmt::Write;
+use std::iter::repeat;
+use std::str::FromStr;
+use unicode_width::UnicodeWidthStr;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -304,7 +303,7 @@ fn render_track_row(
             };
             output.format(format);
             output.fit_str(Some(" - "), artist, len_artist);
-        }
+        },
     }
 
     output.frame.push(' ');

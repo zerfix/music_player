@@ -52,21 +52,16 @@ impl AppState {
         let (left ,  left_selected) = self.library.list_filter.view(self.interface.term_size.height.saturating_sub(1));
         let (right, right_selected) = self.library.list_tracks.view(self.interface.term_size.height.saturating_sub(1));
 
-        let view = RenderDataView::Library(
-            RenderDataViewLibrary{
-                column_selected: self.library.selected_column,
-                tab_selected: self.library.selected_tab,
-                left,
-                left_selected,
-                right,
-                right_selected,
-            }
-        );
+        let view = RenderDataView::Library(RenderDataViewLibrary{
+            column_selected: self.library.selected_column,
+            tab_selected: self.library.selected_tab,
+            left,
+            left_selected,
+            right,
+            right_selected,
+        });
 
-        Some((
-            common,
-            view,
-        ))
+        Some((common, view))
     }
 }
 //-////////////////////////////////////////////////////////////////////////////

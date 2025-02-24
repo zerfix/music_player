@@ -1,8 +1,8 @@
-use color_eyre::Result;
-use crossbeam_channel::Sender;
 use crate::tasks::listener_playback::PlaybackActions;
 use crate::tasks::listener_state::StateActions;
 use crate::tasks::listener_tui::RenderActions;
+use color_eyre::Result;
+use crossbeam_channel::Sender;
 use std::time::Instant;
 
 //-////////////////////////////////////////////////////////////////////////////

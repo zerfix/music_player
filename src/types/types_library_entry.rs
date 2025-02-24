@@ -1,20 +1,18 @@
-use color_eyre::eyre::eyre;
+use crate::functions::functions_hash::hash;
+use crate::functions::functions_hash::hash_list;
+use crate::traits::trait_listable::Listable;
+use arrayvec::ArrayString;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use lofty::file::AudioFile;
 use lofty::file::TaggedFileExt;
+use lofty::prelude::ItemKey;
+use lofty::read_from_path;
 use lofty::tag::Accessor;
 use std::cmp::Ordering;
 use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
-use lofty::read_from_path;
-use lofty::prelude::ItemKey;
-use arrayvec::ArrayString;
-use crate::functions::functions_hash::hash;
-use crate::functions::functions_hash::hash_list;
-use crate::traits::trait_listable::Listable;
-
 
 //-////////////////////////////////////////////////////////////////////////////
 //  Raw Entry
@@ -24,9 +22,9 @@ use crate::traits::trait_listable::Listable;
 pub struct TrackFile {
     /// for treating element as a album header in library view
     pub is_album_padding: bool,
-    pub id_artist   : u64,
-    pub id_album    : u64,
-    pub id_track    : u64, // hash of file path
+    pub id_artist : u64,
+    pub id_album  : u64,
+    pub id_track  : u64, // hash of file path
 
     pub duration     : Duration,
     pub year         : Option<u16>,
@@ -43,18 +41,18 @@ impl TrackFile {
         let file = read_from_path(path)?;
 
         let properties = file.properties();
-        let primary = file.primary_tag().ok_or_eyre(eyre!("primary tags not found"))?;
+        let primary    = file.primary_tag().ok_or_eyre("primary tags not found")?;
 
         let duration = properties.duration();
         let year     = primary.year().map(|y| y as u16);
 
         let track_artist = primary.artist().map(String::from).filter(|s| !s.is_empty());
-        let track_title  = primary.title() .map(String::from).filter(|s| !s.is_empty()).ok_or_eyre(eyre!("missing track name"))?;
+        let track_title  = primary.title() .map(String::from).filter(|s| !s.is_empty()).ok_or_eyre("missing track name")?;
         let track_number = primary.track().map(|t| t as u8);
 
         let album_artist = primary.get_string(&ItemKey::AlbumArtist).filter(|s| !s.is_empty());
         let album_artist = album_artist.map(String::from).or(track_artist.clone());
-        let album_title  = primary.album().filter(|s| !s.is_empty());
+        let album_title = primary.album().filter(|s| !s.is_empty());
         let album_number = primary.disk().map(|n| n as u8);
 
         let id_artist = {
@@ -139,7 +137,7 @@ impl PartialEq for TrackFile {
     }
 }
 
-impl Eq for TrackFile { }
+impl Eq for TrackFile {}
 
 //-////////////////////////////////////////////////////////////////////////////
 //  Filter Entry
@@ -165,7 +163,7 @@ impl LibraryArtistEntry {
                     false => arr.push_str(&lower),
                 };
                 arr
-            })
+            }),
         }
     }
 }

@@ -1,17 +1,17 @@
-use color_eyre::eyre::eyre;
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
-use strum_macros::IntoStaticStr;
-use rayon::prelude::*;
+use crate::enums::enum_input::InputEffect;
 use crate::enums::enum_input::InputGlobalEffect;
 use crate::enums::enum_input::InputLocal;
 use crate::enums::enum_input::InputLocalEffect;
-use crate::enums::enum_input::InputEffect;
 use crate::traits::trait_listable::Listable;
 use crate::types::types_library_entry::LibraryArtistEntry;
 use crate::types::types_library_entry::LibraryFilterEntry;
 use crate::types::types_library_entry::TrackFile;
 use crate::ui::models::model_component_list_state::SortedListState;
+use color_eyre::eyre::eyre;
+use rayon::prelude::*;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
+use strum_macros::IntoStaticStr;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -48,7 +48,7 @@ impl StateLibrary {
         let mut filter = SortedListState::new(true);
         filter.add(LibraryFilterEntry::All);
         StateLibrary{
-            tracks : vec![],
+            tracks: vec![],
             selected_tab: LibraryTab::Artists,
             selected_column: LibraryColumn::Filter,
             list_filter: filter,
@@ -76,7 +76,7 @@ impl StateLibrary {
                 LibraryColumn::Filter => local(InputLocalEffect::Right),
                 LibraryColumn::Tracks => {
                     let entry = match self.list_tracks.selected_entry() {
-                        None => {return InputEffect::None},
+                        None => return InputEffect::None,
                         Some(entry) => entry,
                     };
                     let tracks = self.list_tracks.entries().iter()
@@ -100,7 +100,7 @@ impl StateLibrary {
                 match effect {
                     InputLocalEffect::Up(steps)   => self.list_filter.select_prev(steps),
                     InputLocalEffect::Down(steps) => self.list_filter.select_next(steps),
-                    InputLocalEffect::Left        => {return},
+                    InputLocalEffect::Left        => return,
                     InputLocalEffect::Right       => {self.selected_column = LibraryColumn::Tracks; return},
                     InputLocalEffect::Home        => self.list_filter.select_start(),
                     InputLocalEffect::End         => self.list_filter.select_end(),
@@ -140,7 +140,6 @@ impl StateLibrary {
     // -- Mutate Data ---------------------------------------------------------
 
     pub fn new_track(&mut self, track: TrackFile) {
-
         // add to filter list
         let filter = match self.selected_tab {
             LibraryTab::Artists => LibraryFilterEntry::Artist(LibraryArtistEntry::from_track(track)),
@@ -171,8 +170,7 @@ impl StateLibrary {
 
     /// full refresh of filter list
     fn refresh_filter_list(&mut self) {
-        let mut filters = vec![LibraryFilterEntry::All]
-            .into_par_iter()
+        let mut filters = vec![LibraryFilterEntry::All].into_par_iter()
             .chain(self.tracks.par_iter()
             .map(|track| match self.selected_tab {
                 LibraryTab::Artists => LibraryFilterEntry::Artist(LibraryArtistEntry::from_track(*track)),
@@ -195,20 +193,13 @@ impl StateLibrary {
                 Some(LibraryFilterEntry::Year{year}) => *year == track.year,
             })
             .cloned()
-            .flat_map(|track| {
-                match track.track_number {
-                    Some(1) => {
-                        let mut header = track;
-                        header.is_album_padding = true;
-                        vec![
-                            header,
-                            track,
-                        ]
-                    },
-                    _ => vec![
-                        track
-                    ]
-                }
+            .flat_map(|track| match track.track_number {
+                Some(1) => {
+                    let mut header = track;
+                    header.is_album_padding = true;
+                    vec![header, track]
+                },
+                _ => vec![track],
             })
             .collect::<Vec<TrackFile>>();
         tracks.sort_unstable();

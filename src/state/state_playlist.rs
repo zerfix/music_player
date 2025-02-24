@@ -48,7 +48,7 @@ impl StatePlaylist {
     pub fn replace(&mut self, list: Vec<TrackFile>, selected: usize) {
         self.list = list;
         self.selected = selected;
-   }
+    }
 
     pub fn append(&mut self, track: TrackFile) {
         self.list.push(track);
@@ -62,48 +62,34 @@ impl StatePlaylist {
     pub fn get_playback_state_for_filter(&self, entry: LibraryFilterEntry) -> PlaybackState {
         match entry {
             LibraryFilterEntry::All => PlaybackState::None,
-            LibraryFilterEntry::Artist(artist) => {
-                self.list.iter()
-                    .enumerate()
-                    .filter(|(_, track)| track.id_artist == artist.artist_id)
-                    .map(|(index, _)| match index as isize - self.selected as isize {
-                        ..0 => PlaybackState::Played,
-                         0  => PlaybackState::Playing,
-                        1.. => PlaybackState::Queued,
-                    })
-                    .fold(PlaybackState::None, |acc, state| {
-                        match (acc, state) {
-                            (PlaybackState::Playing, _                     ) |
-                            (_                     , PlaybackState::Playing) => PlaybackState::Playing,
-                            (PlaybackState::Queued , _                     ) |
-                            (_                     , PlaybackState::Queued ) => PlaybackState::Queued,
-                            (PlaybackState::Played , _                     ) |
-                            (_                     , PlaybackState::Played ) => PlaybackState::Played,
-                            (_                     , _                     ) => PlaybackState::None,
-                        }
-                    })
-            }
-            LibraryFilterEntry::Year{year} => {
-                self.list.iter()
-                    .enumerate()
-                    .filter(|(_, track)| track.year == year)
-                    .map(|(index, _)| match index as isize - self.selected as isize {
-                        ..0 => PlaybackState::Played,
-                         0  => PlaybackState::Playing,
-                        1.. => PlaybackState::Queued,
-                    })
-                    .fold(PlaybackState::None, |acc, state| {
-                        match (acc, state) {
-                            (PlaybackState::Playing, _                     ) |
-                            (_                     , PlaybackState::Playing) => PlaybackState::Playing,
-                            (PlaybackState::Queued , _                     ) |
-                            (_                     , PlaybackState::Queued ) => PlaybackState::Queued,
-                            (PlaybackState::Played , _                     ) |
-                            (_                     , PlaybackState::Played ) => PlaybackState::Played,
-                            (_                     , _                     ) => PlaybackState::None,
-                        }
-                    })
-            }
+            LibraryFilterEntry::Artist(artist) => self.list.iter()
+                .enumerate()
+                .filter(|(_, track)| track.id_artist == artist.artist_id)
+                .map(|(index, _)| match index as isize - self.selected as isize {
+                    ..0 => PlaybackState::Played,
+                     0  => PlaybackState::Playing,
+                    1.. => PlaybackState::Queued,
+                })
+                .fold(PlaybackState::None, |acc, state| match (acc, state) {
+                    (PlaybackState::Playing, _) | (_, PlaybackState::Playing) => PlaybackState::Playing,
+                    (PlaybackState::Queued, _ ) | (_, PlaybackState::Queued ) => PlaybackState::Queued,
+                    (PlaybackState::Played, _ ) | (_, PlaybackState::Played ) => PlaybackState::Played,
+                    (_, _) => PlaybackState::None,
+                }),
+            LibraryFilterEntry::Year{year} => self.list.iter()
+                .enumerate()
+                .filter(|(_, track)| track.year == year)
+                .map(|(index, _)| match index as isize - self.selected as isize {
+                    ..0 => PlaybackState::Played,
+                     0  => PlaybackState::Playing,
+                    1.. => PlaybackState::Queued,
+                })
+                .fold(PlaybackState::None, |acc, state| match (acc, state) {
+                    (PlaybackState::Playing, _) | (_, PlaybackState::Playing) => PlaybackState::Playing,
+                    (PlaybackState::Queued, _ ) | (_, PlaybackState::Queued ) => PlaybackState::Queued,
+                    (PlaybackState::Played, _ ) | (_, PlaybackState::Played ) => PlaybackState::Played,
+                    (_, _) => PlaybackState::None,
+                }),
         }
     }
 

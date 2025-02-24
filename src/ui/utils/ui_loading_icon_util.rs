@@ -25,7 +25,7 @@ const fn icon<const L: usize>(dots: [char; L]) -> char {
 // ⠂⠐
 // ⠄⠠
 // ⡀⢀
-pub const LOADING_ICONS_LEN : u8  = 8;
+pub const LOADING_ICONS_LEN: u8 = 8;
 const LOADING_ICONS: [char; LOADING_ICONS_LEN as usize] = [
     icon(['⠁','⠈','⠐']),
     icon(['⠈','⠐','⠠']),
