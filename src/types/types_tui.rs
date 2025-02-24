@@ -1,5 +1,4 @@
 use crate::ui::utils::ui_text_util::fit_text_to_term;
-use arrayvec::ArrayString;
 use color_eyre::Result;
 
 #[derive(Debug)]
@@ -123,12 +122,12 @@ impl TermState {
     }
 
     /// Add text and make sure it fits within n cells
-    pub fn fit_str<const L: usize>(&mut self, prefix: Option<&str>, string: ArrayString<L>, len: usize) {
+    pub fn fit_str(&mut self, prefix: Option<&str>, string: &str, len: usize) {
         self.text_buf.clear();
         if let Some(prefix) = prefix {
             self.text_buf.push_str(prefix);
         }
-        self.text_buf.push_str(&string);
+        self.text_buf.push_str(string);
         fit_text_to_term(&mut self.text_buf, len);
         self.frame.push_str(&self.text_buf);
     }

@@ -1,4 +1,5 @@
 use crate::state::state_library::LibraryColumn;
+use crate::state::state_library::LibrarySelectMode;
 use crate::state::state_library::LibraryTab;
 use crate::state::state_playlist::PlaybackState;
 use crate::tasks::listener_tui::RenderDataCommon;
@@ -22,6 +23,7 @@ use unicode_width::UnicodeWidthStr;
 pub struct RenderDataViewLibrary {
     pub column_selected: LibraryColumn,
     pub tab_selected: LibraryTab,
+    pub track_select_mode: LibrarySelectMode,
     pub left: Vec<LibraryFilterEntry>,
     pub left_selected: usize,
     pub right: Vec<TrackFile>,
@@ -40,8 +42,10 @@ pub fn draw_library_view(
     render_header(
         output,
         size.width,
+        filter_width,
         common,
         view.tab_selected,
+        view.track_select_mode,
     );
 
     for i in 0..size.height.saturating_sub(1) {
@@ -92,10 +96,12 @@ pub fn draw_library_view(
 fn render_header(
     output: &mut TermState,
     width: usize,
+    filter_width: usize,
     common: &RenderDataCommon,
     library_tab: LibraryTab,
+    select_mode: LibrarySelectMode,
 ) {
-    output.format(Format{fg: Color::Black, bg: Color::Blue, bold: true});
+    output.format(Format{fg: Color::Black, bg: Color::Blue   , bold: true});
 
     // loading icon
     {
@@ -108,14 +114,17 @@ fn render_header(
 
     output.frame.push(' ');
 
-    // tab name
-    let len_extra = {
-        let name: &'static str = library_tab.into();
-        output.frame.push_str(name);
-        width.saturating_sub(2 + name.width())
-    };
+    // filter tab
+    {
+        let tab_name: &'static str = library_tab.into();
+        output.fit_str(Some("filter by "), tab_name, filter_width.saturating_sub(2));
+    }
 
-    output.frame.extend(repeat(' ').take(len_extra));
+    // select mode
+    {
+        let select_name: &'static str = select_mode.into();
+        output.fit_str(Some("   select "), select_name, width.saturating_sub(filter_width));
+    }
 }
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -160,7 +169,7 @@ fn render_filter_row(
 
         output.format(format);
         output.frame.push(' ');
-        output.fit_str(None, name, width);
+        output.fit_str(None, &name, width);
         output.frame.push(' ');
     }
 }
@@ -187,7 +196,7 @@ fn render_album_row(
             2.. => album_name.width(),
         };
         output.format(format);
-        output.fit_str(None, album_name, len_album);
+        output.fit_str(None, &album_name, len_album);
 
         len_dynamic.saturating_sub(album_name.width())
     };
@@ -287,7 +296,7 @@ fn render_track_row(
             1.. => track_name.width(),
         };
         output.format(format_white);
-        output.fit_str(None, track_name, len_track);
+        output.fit_str(None, &track_name, len_track);
         len_dynamic.saturating_sub(track_name.width())
     };
 
@@ -302,7 +311,7 @@ fn render_track_row(
                 false => Format{fg: Color::Gray, bg: Color::Default, bold: false},
             };
             output.format(format);
-            output.fit_str(Some(" - "), artist, len_artist);
+            output.fit_str(Some(" - "), &artist, len_artist);
         },
     }
 

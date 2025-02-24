@@ -22,6 +22,7 @@ pub struct StateLibrary {
     pub tracks: Vec<TrackFile>,
     pub selected_tab: LibraryTab,
     pub selected_column: LibraryColumn,
+    pub select_mode: LibrarySelectMode,
     pub list_filter: SortedListState<LibraryFilterEntry>,
     pub list_tracks: SortedListState<TrackFile>,
 }
@@ -43,6 +44,17 @@ pub enum LibraryColumn {
     Tracks,
 }
 
+#[derive(Clone, Copy)]
+#[derive(Debug)]
+#[derive(PartialEq, Eq)]
+#[derive(EnumIter, IntoStaticStr)]
+pub enum LibrarySelectMode {
+    All,
+    Artist,
+    Album,
+    Track,
+}
+
 impl StateLibrary {
     pub fn init() -> StateLibrary {
         let mut filter = SortedListState::new(true);
@@ -51,6 +63,7 @@ impl StateLibrary {
             tracks: vec![],
             selected_tab: LibraryTab::Artists,
             selected_column: LibraryColumn::Filter,
+            select_mode: LibrarySelectMode::Artist,
             list_filter: filter,
             list_tracks: SortedListState::new(false),
         }
@@ -80,7 +93,12 @@ impl StateLibrary {
                         Some(entry) => entry,
                     };
                     let tracks = self.list_tracks.entries().iter()
-                        .filter(|t| t.is_selectable() && t.id_artist == entry.id_artist)
+                        .filter(|t| t.is_selectable() && match self.select_mode {
+                            LibrarySelectMode::All    => true,
+                            LibrarySelectMode::Artist => t.id_artist == entry.id_artist,
+                            LibrarySelectMode::Album  => t.id_album  == entry.id_album,
+                            LibrarySelectMode::Track  => t.id_track  == entry.id_track,
+                        })
                         .cloned()
                         .collect::<Vec<TrackFile>>();
                     let album_offset = self.list_tracks.entries().iter()
@@ -99,7 +117,12 @@ impl StateLibrary {
                         Some(entry) => entry,
                     };
                     let tracks = self.list_tracks.entries().iter()
-                        .filter(|t| t.is_selectable() && t.id_artist == entry.id_artist)
+                        .filter(|t| t.is_selectable() && match self.select_mode {
+                            LibrarySelectMode::All    => true,
+                            LibrarySelectMode::Artist => t.id_artist == entry.id_artist,
+                            LibrarySelectMode::Album  => t.id_album  == entry.id_album,
+                            LibrarySelectMode::Track  => t.id_track  == entry.id_track,
+                        })
                         .cloned()
                         .collect::<Vec<TrackFile>>();
                     global(InputGlobalEffect::AppendTracks(tracks))
@@ -145,8 +168,21 @@ impl StateLibrary {
                 InputLocalEffect::Right       => {return},
                 InputLocalEffect::Home        => self.list_tracks.select_start(),
                 InputLocalEffect::End         => self.list_tracks.select_end(),
-                InputLocalEffect::NextTab     => {},
-                InputLocalEffect::PrevTab     => {},
+                InputLocalEffect::NextTab     => {
+                        self.select_mode = LibrarySelectMode::iter()
+                            .cycle()
+                            .skip_while(|x| *x != self.select_mode)
+                            .nth(1)
+                            .unwrap();
+                },
+                InputLocalEffect::PrevTab => {
+                        self.select_mode = LibrarySelectMode::iter()
+                            .rev()
+                            .cycle()
+                            .skip_while(|x| *x != self.select_mode)
+                            .nth(1)
+                            .unwrap();
+                },
             }
         }
     }

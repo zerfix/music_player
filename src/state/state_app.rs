@@ -55,6 +55,7 @@ impl AppState {
         let view = RenderDataView::Library(RenderDataViewLibrary{
             column_selected: self.library.selected_column,
             tab_selected: self.library.selected_tab,
+            track_select_mode: self.library.select_mode,
             left,
             left_selected,
             right,
