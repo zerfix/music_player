@@ -54,7 +54,7 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                             match effect {
                                 InputEffect::Local(effect) => library.handle_input_effect(effect),
                                 InputEffect::Global(effect) => match effect {
-                                    InputGlobalEffect::PlayPause => todo!(),
+                                    InputGlobalEffect::AppendTracks(tracks) => tracks.into_iter().for_each(|track| playlist.append(track)),
                                     InputGlobalEffect::ReplaceTracksAndPlay{tracks, index} => {
                                         playlist.replace(tracks, index);
                                         tx.playback.send(PlaybackActions::Clear).unwrap();
@@ -65,8 +65,7 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                                             tx.playback.send(PlaybackActions::Que{track: Box::new(track)}).unwrap();
                                         }
                                     },
-                                    InputGlobalEffect::AppendTracks(_tracks) => todo!(),
-                                    InputGlobalEffect::AppendTrack(_track) => todo!(),
+                                    InputGlobalEffect::PlayPause => todo!(),
                                     InputGlobalEffect::ClearTracks => todo!(),
                                 },
                                 InputEffect::None => {},

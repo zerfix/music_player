@@ -19,6 +19,7 @@ pub enum InputLocal {
     RevTab,
 
     Select,
+    SelectAlt,
 }
 
 #[derive(Clone, Copy)]
@@ -53,7 +54,6 @@ pub enum InputGlobalEffect {
     PlayPause,
     ReplaceTracksAndPlay{tracks: Vec<TrackFile>, index: usize},
     AppendTracks(Vec<TrackFile>),
-    AppendTrack(Box<TrackFile>),
     ClearTracks,
 }
 

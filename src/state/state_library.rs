@@ -91,6 +91,20 @@ impl StateLibrary {
                     global(InputGlobalEffect::ReplaceTracksAndPlay{tracks, index})
                 },
             },
+            InputLocal::SelectAlt => match self.selected_column {
+                LibraryColumn::Filter => local(InputLocalEffect::Right),
+                LibraryColumn::Tracks => {
+                    let entry = match self.list_tracks.selected_entry() {
+                        None => return InputEffect::None,
+                        Some(entry) => entry,
+                    };
+                    let tracks = self.list_tracks.entries().iter()
+                        .filter(|t| t.is_selectable() && t.id_artist == entry.id_artist)
+                        .cloned()
+                        .collect::<Vec<TrackFile>>();
+                    global(InputGlobalEffect::AppendTracks(tracks))
+                },
+            },
         }
     }
 
