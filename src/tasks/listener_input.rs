@@ -28,7 +28,7 @@ fn input_loop(tx: &MsgChannels) -> Result<()> {
     loop {
         if event::poll(Duration::from_secs(60*60)).is_ok() {
             if let Ok(event) = event::read() {
-                debug!("{:?}", &event);
+                trace!("{:?}", &event);
                 match event {
                     Event::FocusGained => (),
                     Event::FocusLost => (),

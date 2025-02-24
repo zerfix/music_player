@@ -95,7 +95,7 @@ fn render_loop(stdout: &mut Stdout, rx: Receiver<RenderActions>) -> Result<()> {
                     view,
                 } => {
                     let render_state = render_start.elapsed();
-                    let term_size = TermSize::new().context("Getting terminal dimentions")?;
+                    let term_size = TermSize::new().context("Getting terminal dimensions")?;
 
                     match view {
                         RenderDataView::Library(view) => draw_library_view(&mut term_state, term_size, &common, view),
@@ -113,7 +113,7 @@ fn render_loop(stdout: &mut Stdout, rx: Receiver<RenderActions>) -> Result<()> {
 
                     let render_output = render_start.elapsed();
 
-                    info!(
+                    debug!(
                         "Render {:?}: input > received {:?} > changed state {:?} > copied state {:?} > received state {:?} > render {:?} > output {:?}",
                         render_output,
                         render_received,

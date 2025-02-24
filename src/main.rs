@@ -71,8 +71,8 @@ use std::fs::File;
 use std::panic;
 use std::sync::OnceLock;
 use std::thread;
-use tracing::metadata::LevelFilter;
 use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -126,6 +126,7 @@ fn main() -> Result<(), Report> {
         // -- Logging ----------------------------
         {
             let config = &CONFIG.get().unwrap().logging;
+            let log_level = config.log_level.to_level();
             if config.enable_logging {
                 let file = File::create(&config.log_path)
                     .context(format!("Trying to create log file at {}", config.log_path.to_string_lossy()))
@@ -135,7 +136,10 @@ fn main() -> Result<(), Report> {
                     ))?;
                 let file_log = tracing_subscriber::fmt::layer()
                     .with_writer(file)
-                    .with_filter(LevelFilter::from_level(config.log_level.to_level()));
+                    .with_filter(match config.log_libraries {
+                        true  => EnvFilter::new(log_level.as_str()),
+                        false => EnvFilter::new(format!("{}={}", env!("CARGO_PKG_NAME"), log_level)),
+                    });
                 tracing_subscriber::registry().with(file_log).init();
             }
 

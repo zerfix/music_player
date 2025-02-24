@@ -49,6 +49,7 @@ pub struct ConfLog {
     pub enable_logging: bool,
     pub log_path: PathBuf,
     pub log_level: ConfLogLevel,
+    pub log_libraries: bool,
 }
 
 impl Config {
@@ -65,6 +66,7 @@ impl Config {
                 enable_logging: false,
                 log_path: PathBuf::default(),
                 log_level: ConfLogLevel::Info,
+                log_libraries: false,
             },
         };
         let config_file_str = toml::to_string(&config_file).context("Creating default config file")?;
