@@ -152,7 +152,7 @@ fn main() -> Result<(), Report> {
 
     // -- Create Channels -------------------------------------------
     info!("Creating channels...");
-    let (tx_exit    , rx_exit    ) = bounded(1);
+    let (tx_exit    , rx_exit    ) = bounded(0);
     let (tx_playback, rx_playback) = bounded(16);
     let (tx_state   , rx_state   ) = bounded(256);
     let (tx_delay   , rx_delay   ) = bounded(1);
@@ -170,52 +170,50 @@ fn main() -> Result<(), Report> {
     // -- Create Threads --------------------------------------------
     info!("Creating threads...");
     {
-        let _threads = [
-            {
-                let channels = channels();
-                thread::spawn(move || start_tui_listener(rx_tui, channels, tx_tui_done))
-            },
-            {
-                let channels = channels();
-                thread::spawn(move || start_playback_listener(rx_playback, channels))
-            },
-            {
-                let channels = channels();
-                thread::spawn(move || start_render_delay(rx_delay, channels))
-            },
-            {
-                let channels = channels();
-                thread::spawn(move || start_state_listener(rx_state, channels))
-            },
-            {
-                let channels = channels();
-                thread::spawn(move || start_fs_scanner_listener(channels))
-            },
-            {
-                let channels = channels();
-                thread::spawn(move || start_input_listener(channels))
-            },
-        ];
+        let channels = channels();
+        thread::spawn(move || start_tui_listener(rx_tui, channels, tx_tui_done));
+    }
+    {
+        let channels = channels();
+        thread::spawn(move || start_playback_listener(rx_playback, channels));
+    }
+    {
+        let channels = channels();
+        thread::spawn(move || start_render_delay(rx_delay, channels));
+    }
+    {
+        let channels = channels();
+        thread::spawn(move || start_state_listener(rx_state, channels));
+    }
+    {
+        let channels = channels();
+        thread::spawn(move || start_fs_scanner_listener(channels));
+    }
+    {
+        let channels = channels();
+        thread::spawn(move || start_input_listener(channels));
+    }
 
-        // -- Wait for exit signal --------------------------------------
-        match rx_exit.recv() {
-            Err(err) => error!("Exit channel error: {:?}", err),
-            Ok(msg) => {
-                info!("Exiting");
-                let _ = tx_tui.send(RenderActions::Exit);
-                let _ = rx_tui_done.recv();
+    // -- Wait for exit signal --------------------------------------
+    info!("Ready for exit signal");
+    match rx_exit.recv() {
+        Err(err) => error!("Exit signal channel error: {:?}", err),
+        Ok(msg) => {
+            info!("Received exit signal. Running exit procedure...");
+            let _ = tx_tui.send(RenderActions::Exit);
+            let _ = rx_tui_done.recv();
 
-                match msg {
-                    Err(err) => return Err(err),
-                    Ok(msg) => {
-                        if !msg.is_empty() {
-                            info!("Exit msg: {}", msg);
-                            println!("{}", msg);
-                        }
-                    },
-                }
-            },
-        }
+            match msg {
+                Err(err) => return Err(err),
+                Ok(msg) => {
+                    if !msg.is_empty() {
+                        info!("Exit msg: {}", msg);
+                        println!("{}", msg);
+                    }
+                },
+            }
+            info!("Exit procedure complete");
+        },
     };
 
     Ok(())

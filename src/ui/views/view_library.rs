@@ -101,7 +101,7 @@ fn render_header(
     library_tab: LibraryTab,
     select_mode: LibrarySelectMode,
 ) {
-    output.format(Format{fg: Color::Black, bg: Color::Blue   , bold: true});
+    output.format(Format{fg: Color::Black, bg: Color::Blue, bold: true});
 
     // loading icon
     {

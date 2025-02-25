@@ -72,8 +72,8 @@ impl StatePlaylist {
                 })
                 .fold(PlaybackState::None, |acc, state| match (acc, state) {
                     (PlaybackState::Playing, _) | (_, PlaybackState::Playing) => PlaybackState::Playing,
-                    (PlaybackState::Queued, _ ) | (_, PlaybackState::Queued ) => PlaybackState::Queued,
-                    (PlaybackState::Played, _ ) | (_, PlaybackState::Played ) => PlaybackState::Played,
+                    (PlaybackState::Queued , _) | (_, PlaybackState::Queued ) => PlaybackState::Queued,
+                    (PlaybackState::Played , _) | (_, PlaybackState::Played ) => PlaybackState::Played,
                     (_, _) => PlaybackState::None,
                 }),
             LibraryFilterEntry::Year{year} => self.list.iter()
@@ -86,8 +86,8 @@ impl StatePlaylist {
                 })
                 .fold(PlaybackState::None, |acc, state| match (acc, state) {
                     (PlaybackState::Playing, _) | (_, PlaybackState::Playing) => PlaybackState::Playing,
-                    (PlaybackState::Queued, _ ) | (_, PlaybackState::Queued ) => PlaybackState::Queued,
-                    (PlaybackState::Played, _ ) | (_, PlaybackState::Played ) => PlaybackState::Played,
+                    (PlaybackState::Queued , _) | (_, PlaybackState::Queued ) => PlaybackState::Queued,
+                    (PlaybackState::Played , _) | (_, PlaybackState::Played ) => PlaybackState::Played,
                     (_, _) => PlaybackState::None,
                 }),
         }
