@@ -73,6 +73,7 @@ use std::fs::File;
 use std::panic;
 use std::sync::OnceLock;
 use std::thread;
+use tasks::listener_tui::reset_terminal;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
@@ -213,19 +214,27 @@ fn main() -> Result<(), Report> {
         Err(err) => error!("Exit signal channel error: {:?}", err),
         Ok(msg) => {
             info!("Received exit signal. Running exit procedure...");
+
+            // reset terminal
             let _ = tx_tui.send(RenderActions::Exit);
             let _ = rx_tui_done.recv();
+            reset_terminal();
 
+            // exit message
             match msg {
-                Err(err) => return Err(err),
+                Err(err) => {
+                    info!("Exit with error");
+                    error!("{:?}", err);
+                    return Err(err)
+                },
                 Ok(msg) => {
                     if !msg.is_empty() {
                         info!("Exit msg: {}", msg);
                         println!("{}", msg);
                     }
+                    info!("Exit done");
                 },
             }
-            info!("Exit procedure complete");
         },
     };
 

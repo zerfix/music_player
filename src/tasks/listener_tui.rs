@@ -53,6 +53,7 @@ pub fn start_tui_listener(rx: Receiver<RenderActions>, tx: MsgChannels, tx_tui_d
     execute!(
         stdout,
         terminal::EnterAlternateScreen,
+        terminal::DisableLineWrap,
         event::EnableMouseCapture,
         cursor::Hide,
     ).unwrap();
@@ -64,19 +65,25 @@ pub fn start_tui_listener(rx: Receiver<RenderActions>, tx: MsgChannels, tx_tui_d
         let _ = tx.exit.send(Err(err));
     };
 
-    info!("Resetting terminal");
+    tx_tui_done.send(()).unwrap();
+}
+
+pub fn reset_terminal() {
+    let mut stdout = stdout();
+    info!("Resetting terminal...");
     if let Err(err) = terminal::disable_raw_mode() {
         error!("Disable raw terminal mode error: {:?}", err);
     };
     if let Err(err) = execute!(
-        stdout,
-        terminal::LeaveAlternateScreen,
-        event::DisableMouseCapture,
+        &mut stdout,
         cursor::Show,
+        event::DisableMouseCapture,
+        terminal::EnableLineWrap,
+        terminal::LeaveAlternateScreen,
     ) {
         error!("Reset terminal error: {:?}", err);
     };
-    tx_tui_done.send(()).unwrap();
+    info!("Terminal reset complete");
 }
 
 fn render_loop(stdout: &mut Stdout, rx: Receiver<RenderActions>) -> Result<()> {
