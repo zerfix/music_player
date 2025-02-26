@@ -58,6 +58,8 @@ use crate::tasks::listener_tui::start_tui_listener;
 use crate::tasks::listener_tui::RenderActions;
 use crate::types::config::Config;
 use crate::types::types_msg_channels::MsgChannels;
+use backtrace::Backtrace;
+use color_backtrace::BacktracePrinter;
 use color_eyre::eyre::Context;
 use color_eyre::eyre::ContextCompat;
 use color_eyre::Report;
@@ -145,7 +147,18 @@ fn main() -> Result<(), Report> {
 
             // log hook on thread panic
             panic::set_hook(Box::new(|panic_info| {
-                error!("Thread {}", panic_info.to_string().replacen(":\n", ": ", 1));
+                let backtrace = BacktracePrinter::new().format_trace_to_string(&Backtrace::new())
+                    .unwrap_or("<Backtrace failed>".to_string());
+
+                let location = panic_info.location()
+                    .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+                    .unwrap_or_else(|| "unknown location".to_string());
+
+                let message = panic_info.payload()
+                    .downcast_ref::<&str>()
+                    .unwrap_or(&"Unknown panic");
+
+                error!("Thread panicked at {}: {}\n{}", location, message, backtrace);
             }));
         }
     }
