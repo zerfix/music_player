@@ -8,7 +8,6 @@ use crate::types::types_library_entry::LibraryFilterEntry;
 use crate::types::types_library_entry::TrackFile;
 use crate::ui::models::model_component_list_state::SortedListState;
 use color_eyre::eyre::eyre;
-use rayon::prelude::*;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use strum_macros::IntoStaticStr;
@@ -20,6 +19,8 @@ use strum_macros::IntoStaticStr;
 #[derive(Debug)]
 pub struct StateLibrary {
     pub tracks: Vec<TrackFile>,
+    pub filters_artist: Vec<LibraryFilterEntry>,
+    pub filters_years: Vec<LibraryFilterEntry>,
     pub selected_tab: LibraryTab,
     pub selected_column: LibraryColumn,
     pub select_mode: LibrarySelectMode,
@@ -61,6 +62,8 @@ impl StateLibrary {
         filter.add(LibraryFilterEntry::All);
         StateLibrary{
             tracks: vec![],
+            filters_artist: vec![LibraryFilterEntry::All],
+            filters_years: vec![LibraryFilterEntry::All],
             selected_tab: LibraryTab::Artists,
             selected_column: LibraryColumn::Filter,
             select_mode: LibrarySelectMode::Artist,
@@ -92,12 +95,13 @@ impl StateLibrary {
                         None => return InputEffect::None,
                         Some(entry) => entry,
                     };
-                    let tracks = self.list_tracks.entries().iter()
-                        .filter(|t| t.is_selectable() && match self.select_mode {
+                    let tracks = self.list_tracks.entries().iter().copied()
+                        .filter(|track| track.is_selectable())
+                        .filter(|track| match self.select_mode {
                             LibrarySelectMode::All    => true,
-                            LibrarySelectMode::Artist => t.id_artist == entry.id_artist,
-                            LibrarySelectMode::Album  => t.id_album  == entry.id_album,
-                            LibrarySelectMode::Track  => t.id_track  == entry.id_track,
+                            LibrarySelectMode::Artist => track.id_artist == entry.id_artist,
+                            LibrarySelectMode::Album  => track.id_album  == entry.id_album,
+                            LibrarySelectMode::Track  => track.id_track  == entry.id_track,
                         })
                         .collect::<Vec<TrackFile>>();
                     let index = tracks.iter()
@@ -117,14 +121,14 @@ impl StateLibrary {
                         None => return InputEffect::None,
                         Some(entry) => entry,
                     };
-                    let tracks = self.list_tracks.entries().iter()
-                        .filter(|t| t.is_selectable() && match self.select_mode {
+                    let tracks = self.list_tracks.entries().iter().copied()
+                        .filter(|track| track.is_selectable())
+                        .filter(|track| match self.select_mode {
                             LibrarySelectMode::All    => true,
-                            LibrarySelectMode::Artist => t.id_artist == entry.id_artist,
-                            LibrarySelectMode::Album  => t.id_album  == entry.id_album,
-                            LibrarySelectMode::Track  => t.id_track  == entry.id_track,
+                            LibrarySelectMode::Artist => track.id_artist == entry.id_artist,
+                            LibrarySelectMode::Album  => track.id_album  == entry.id_album,
+                            LibrarySelectMode::Track  => track.id_track  == entry.id_track,
                         })
-                        .cloned()
                         .collect::<Vec<TrackFile>>();
                     global(InputGlobalEffect::AppendTracks(tracks))
                 },
@@ -166,7 +170,7 @@ impl StateLibrary {
                 InputLocalEffect::Up(steps)   => self.list_tracks.select_prev(steps),
                 InputLocalEffect::Down(steps) => self.list_tracks.select_next(steps),
                 InputLocalEffect::Left        => {self.selected_column = LibraryColumn::Filter; return},
-                InputLocalEffect::Right       => {return},
+                InputLocalEffect::Right       => return,
                 InputLocalEffect::Home        => self.list_tracks.select_start(),
                 InputLocalEffect::End         => self.list_tracks.select_end(),
                 InputLocalEffect::NextTab     => {
@@ -191,18 +195,26 @@ impl StateLibrary {
     // -- Mutate Data ---------------------------------------------------------
 
     pub fn new_track(&mut self, track: TrackFile) {
-        // add to filter list
-        let filter = match self.selected_tab {
-            LibraryTab::Artists => LibraryFilterEntry::Artist(LibraryArtistEntry::from_track(track)),
-            LibraryTab::Year => LibraryFilterEntry::Year{year: track.year},
+        // add to filter lists
+        let artist = LibraryFilterEntry::Artist(LibraryArtistEntry::from_track(track));
+        let year   = LibraryFilterEntry::Year{year: track.year};
+        if let Err(index) = self.filters_artist.binary_search(&artist) {
+            self.filters_artist.insert(index, artist);
+        }
+        if let Err(index) = self.filters_years.binary_search(&year) {
+            self.filters_years.insert(index, year);
+        }
+        match self.selected_tab {
+            LibraryTab::Artists => self.list_filter.add(artist),
+            LibraryTab::Year    => self.list_filter.add(year),
         };
-        self.list_filter.add(filter);
 
         // add to track list
-        let add_to_track_list = match self.list_filter.selected_entry().ok_or(eyre!("Filter is empty")).unwrap() {
-            LibraryFilterEntry::All => true,
-            LibraryFilterEntry::Artist(artist) => artist.artist_id == track.id_artist,
-            LibraryFilterEntry::Year{year} => *year == track.year,
+        let add_to_track_list = match self.list_filter.selected_entry() {
+            None |
+            Some(LibraryFilterEntry::All           ) => true,
+            Some(LibraryFilterEntry::Artist(artist)) => artist.artist_id == track.id_artist,
+            Some(LibraryFilterEntry::Year{year}    ) => *year == track.year,
         };
         if add_to_track_list {
             if !self.list_tracks.entries().iter().any(|e| e.album_title == track.album_title) {
@@ -221,39 +233,31 @@ impl StateLibrary {
 
     /// full refresh of filter list
     fn refresh_filter_list(&mut self) {
-        let mut filters = vec![LibraryFilterEntry::All].into_par_iter()
-            .chain(self.tracks.par_iter()
-            .map(|track| match self.selected_tab {
-                LibraryTab::Artists => LibraryFilterEntry::Artist(LibraryArtistEntry::from_track(*track)),
-                LibraryTab::Year => LibraryFilterEntry::Year { year: track.year },
-            }))
-            .collect::<Vec<_>>();
-        filters.sort_unstable();
-        filters.dedup();
-        self.list_filter.replace_all(filters);
-        self.refresh_tracks_list();
+        match self.selected_tab {
+            LibraryTab::Artists => self.list_filter.replace_all(self.filters_artist.clone()),
+            LibraryTab::Year    => self.list_filter.replace_all(self.filters_years.clone()),
+        }
     }
 
     /// full refresh of track list
     fn refresh_tracks_list(&mut self) {
-        let mut tracks = self.tracks.iter()
+        let mut tracks = Vec::with_capacity(self.tracks.len()+self.tracks.len()/8);
+        self.tracks.iter().copied()
             .filter(|track| match self.list_filter.selected_entry() {
-                None => false,
-                Some(LibraryFilterEntry::All) => true,
+                None |
+                Some(LibraryFilterEntry::All          ) => true,
                 Some(LibraryFilterEntry::Artist(album)) => album.artist_id == track.id_artist,
-                Some(LibraryFilterEntry::Year{year}) => *year == track.year,
+                Some(LibraryFilterEntry::Year{year}   ) => *year == track.year,
             })
-            .cloned()
-            .flat_map(|track| match track.track_number {
+            .for_each(|track: TrackFile| match track.track_number {
                 Some(1) => {
-                    let mut header = track;
-                    header.is_album_padding = true;
-                    vec![header, track]
+                    let mut album = track;
+                    album.is_album_padding = true;
+                    tracks.push(album);
+                    tracks.push(track);
                 },
-                _ => vec![track],
-            })
-            .collect::<Vec<TrackFile>>();
-        tracks.sort_unstable();
+                _ => tracks.push(track),
+            });
         self.list_tracks.replace_all(tracks);
     }
 }
