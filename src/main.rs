@@ -24,6 +24,7 @@ mod tasks {
     pub mod listener_scanner;
     pub mod listener_state;
     pub mod listener_tui;
+    pub mod listener_updater;
 }
 mod traits {
     pub mod trait_listable;
@@ -35,10 +36,14 @@ mod ui {
     pub mod utils {
         pub mod ui_loading_icon_util;
         pub mod ui_text_util;
+        pub mod ui_time_util;
     }
     pub mod views {
         pub mod view_library;
         pub mod view_playback;
+    }
+    pub mod widgets {
+        pub mod widget_playback_status;
     }
 }
 mod types {
@@ -68,6 +73,7 @@ use crossbeam_channel::bounded;
 use directories::ProjectDirs;
 use mimalloc::MiMalloc;
 use static_init::dynamic;
+use tasks::listener_updater::start_updater;
 use std::fs::read_to_string;
 use std::fs::File;
 use std::panic;
@@ -169,6 +175,7 @@ fn main() -> Result<(), Report> {
     let (tx_exit    , rx_exit    ) = bounded(0);
     let (tx_playback, rx_playback) = bounded(16);
     let (tx_state   , rx_state   ) = bounded(256);
+    let (tx_update  , rx_update  ) = bounded(1);
     let (tx_delay   , rx_delay   ) = bounded(1);
     let (tx_tui     , rx_tui     ) = bounded(1);
     let (tx_tui_done, rx_tui_done) = bounded(0);
@@ -177,6 +184,7 @@ fn main() -> Result<(), Report> {
         exit    : tx_exit.clone(),
         playback: tx_playback.clone(),
         state   : tx_state.clone(),
+        update  : tx_update.clone(),
         delay   : tx_delay.clone(),
         tui     : tx_tui.clone(),
     };
@@ -194,6 +202,10 @@ fn main() -> Result<(), Report> {
     {
         let channels = channels();
         thread::spawn(move || start_render_delay(rx_delay, channels));
+    }
+    {
+        let channels = channels();
+        thread::spawn(move || start_updater(rx_update, channels));
     }
     {
         let channels = channels();

@@ -14,6 +14,7 @@ pub struct MsgChannels {
     pub exit    : Sender<Result<String>>,
     pub playback: Sender<PlaybackActions>,
     pub state   : Sender<(Instant, StateActions)>,
+    pub update  : Sender<bool>,
     pub delay   : Sender<Instant>,
     pub tui     : Sender<RenderActions>,
 }

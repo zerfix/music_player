@@ -19,10 +19,13 @@ pub enum StateActions {
     InputLocal(InputLocal),
     InputGlobal(InputGlobal),
     PlaybackNextTrack{error: Option<Report>},
+    PlaybackPlay(),
+    PlaybackPause(),
     ScanIsScanning{is_scanning: bool}, // used to show user if scanning on startup
     ScanAddSong{track: Box<TrackFile>},
     ScanIndicatorRotate(u8),
     Resize{height: u16, width: u16},
+    Update(),
     Render(),
 }
 
@@ -89,9 +92,9 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                                 tx.playback.send(PlaybackActions::Next).unwrap();
                             },
                             InputGlobal::Stop => {
-                                info!("stopping state");
                                 playlist.clear();
                                 tx.playback.send(PlaybackActions::Clear).unwrap();
+                                tx.update.send(false).unwrap();
                             },
                             InputGlobal::SkipBackward => todo!(),
                             InputGlobal::SkipForward  => todo!(),
@@ -104,6 +107,14 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                                 tx.playback.send(PlaybackActions::Que{track: Box::new(track)}).unwrap();
                             }
                         });
+                    },
+                    StateActions::PlaybackPlay()  => {
+                        state.mutate(|_, _, playlist| playlist.resume());
+                        tx.update.send(true).unwrap();
+                    },
+                    StateActions::PlaybackPause() => {
+                        state.mutate(|_, _, playback| playback.pause());
+                        tx.update.send(false).unwrap();
                     },
                     StateActions::ScanIsScanning{is_scanning} => state.mutate(|interface, _, _| {
                         interface.is_scanning = is_scanning;
@@ -123,9 +134,8 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                             interface.term_size.width  = width as usize;
                         });
                     },
-                    StateActions::Render() => {
-                        render_queued = false;
-                    },
+                    StateActions::Update() => {},
+                    StateActions::Render() => render_queued = false,
                 };
 
                 // Render change

@@ -1,9 +1,10 @@
 use crate::state::state_playlist::StatePlaylist;
 use crate::types::types_tui::TermSize;
 use crate::types::types_tui::TermState;
+use crate::types::types_msg_channels::MsgChannels;
 use crate::ui::views::view_library::draw_library_view;
 use crate::ui::views::view_library::RenderDataViewLibrary;
-use crate::MsgChannels;
+use crate::ui::widgets::widget_playback_status::render_playback_status_widget;
 use color_eyre::eyre::Context;
 use color_eyre::Result;
 use crossbeam_channel::Receiver;
@@ -35,6 +36,7 @@ pub enum RenderActions {
 
 #[derive(Debug)]
 pub struct RenderDataCommon {
+    pub term_size: TermSize,
     pub interval: u8,
     pub is_scanning: bool,
     pub playlist: StatePlaylist,
@@ -102,14 +104,19 @@ fn render_loop(stdout: &mut Stdout, rx: Receiver<RenderActions>) -> Result<()> {
                     view,
                 } => {
                     let render_state = render_start.elapsed();
-                    let term_size = TermSize::new().context("Getting terminal dimensions")?;
 
+                    // render view
                     match view {
-                        RenderDataView::Library(view) => draw_library_view(&mut term_state, term_size, &common, view),
+                        RenderDataView::Library(view) => draw_library_view(&mut term_state, &common, view),
                     }
+
+                    // render playback status
+                    term_state.newline();
+                    render_playback_status_widget(&mut term_state, &common);
 
                     let render_layout = render_start.elapsed();
 
+                    // output
                     execute!(
                         stdout,
                         terminal::BeginSynchronizedUpdate,
@@ -131,6 +138,7 @@ fn render_loop(stdout: &mut Stdout, rx: Receiver<RenderActions>) -> Result<()> {
                         render_output  - render_layout,
                     );
 
+                    // reset
                     term_state.clear();
                 },
                 RenderActions::Exit => return Ok(()),

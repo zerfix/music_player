@@ -44,18 +44,21 @@ impl AppState {
         self.has_changed = false;
 
         let common = RenderDataCommon{
+            term_size  : self.interface.term_size,
             interval   : self.interface.interval,
             is_scanning: self.interface.is_scanning,
             playlist   : self.playlist.clone(),
         };
 
-        let (left ,  left_selected) = self.library.list_filter.view(self.interface.term_size.height.saturating_sub(1));
-        let (right, right_selected) = self.library.list_tracks.view(self.interface.term_size.height.saturating_sub(1));
+        let list_height = self.interface.term_size.height.saturating_sub(2);
+        let (left ,  left_selected) = self.library.list_filter.view(list_height);
+        let (right, right_selected) = self.library.list_tracks.view(list_height);
 
         let view = RenderDataView::Library(RenderDataViewLibrary{
-            column_selected: self.library.selected_column,
-            tab_selected: self.library.selected_tab,
+            column_selected  : self.library.selected_column,
+            tab_selected     : self.library.selected_tab,
             track_select_mode: self.library.select_mode,
+            list_height,
             left,
             left_selected,
             right,

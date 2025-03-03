@@ -12,7 +12,6 @@ use awedio::Sound;
 use color_eyre::eyre::Context;
 use color_eyre::Result;
 use crossbeam_channel::Receiver;
-use crossbeam_channel::Sender;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::path::Path;
@@ -43,7 +42,7 @@ pub fn start_playback_listener(rx: Receiver<PlaybackActions>, tx: MsgChannels) {
 }
 
 pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<()> {
-    let mut state = PlaybackManager::new().context("Crating playback manager")?;
+    let mut state = PlaybackManager::new(tx.clone()).context("Crating playback manager")?;
     let mut tracks: BTreeMap<u64, Box<Path>> = BTreeMap::new();
 
     loop {
@@ -72,7 +71,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                         tx.state.send((Instant::now(), StateActions::PlaybackNextTrack{error: Some(err)}))?;
                         continue;
                     }
-                    state.start(tx.playback.clone(), start_at);
+                    state.start(start_at);
                 },
                 PlaybackActions::Que { track } => {
                     let path = match tracks.get(&track.id_track) {
@@ -94,7 +93,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                     }
                 },
                 PlaybackActions::Callback => {
-                    state.next(tx.playback.clone());
+                    state.next();
                     tx.state.send((Instant::now(), StateActions::PlaybackNextTrack{error: None}))?;
                 },
                 PlaybackActions::Pause => {
@@ -104,10 +103,10 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                     state.resume();
                 },
                 PlaybackActions::Forward(duration) => {
-                    state.start(tx.playback.clone(), Some(duration));
+                    state.start(Some(duration));
                 },
                 PlaybackActions::Next => {
-                    state.next(tx.playback.clone());
+                    state.next();
                     tx.state.send((Instant::now(), StateActions::PlaybackNextTrack { error: None }))?;
                 },
                 PlaybackActions::Clear => {
@@ -119,6 +118,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
 }
 
 struct PlaybackManager {
+    channels: MsgChannels,
     manager: Manager,
     backend: CpalBackend,
     current_controller: Option<Controller<Pausable<CompletionNotifier<MemorySound>>>>,
@@ -127,9 +127,10 @@ struct PlaybackManager {
 }
 
 impl PlaybackManager {
-    pub fn new() -> Result<PlaybackManager> {
+    pub fn new(channels: MsgChannels) -> Result<PlaybackManager> {
         let (manager, backend) = awedio::start()?;
         Ok(PlaybackManager {
+            channels,
             manager,
             backend,
             current_controller: None,
@@ -160,7 +161,6 @@ impl PlaybackManager {
 
     pub fn start(
         &mut self,
-        tx_playback: Sender<PlaybackActions>,
         start_at: Option<Duration>,
     ) {
         if let Some(sound) = self.que.front() {
@@ -174,6 +174,7 @@ impl PlaybackManager {
             if self.current_controller.is_some() {self.stop()}
             self.manager.play(Box::new(sound));
 
+            let tx_playback = self.channels.playback.clone();
             let notifier = thread::spawn(move || {
                 notifier.recv().unwrap();
                 tx_playback.send(PlaybackActions::Callback).unwrap();
@@ -181,23 +182,26 @@ impl PlaybackManager {
 
             self.current_controller = Some(controller);
             self.current_notifier = Some(notifier);
+            self.channels.state.send((Instant::now(), StateActions::PlaybackPlay())).unwrap();
         }
     }
 
-    pub fn next(&mut self, tx_playback: Sender<PlaybackActions>) {
+    pub fn next(&mut self) {
         self.que.pop_front();
-        self.start(tx_playback, None);
+        self.start(None);
     }
 
     pub fn pause(&mut self) {
         if let Some(controller) = &mut self.current_controller {
             controller.set_paused(true);
+            self.channels.state.send((Instant::now(), StateActions::PlaybackPause())).unwrap();
         }
     }
 
     pub fn resume(&mut self) {
         if let Some(controller) = &mut self.current_controller {
             controller.set_paused(false);
+            self.channels.state.send((Instant::now(), StateActions::PlaybackPlay())).unwrap();
         }
     }
 }

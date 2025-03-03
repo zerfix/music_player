@@ -7,9 +7,9 @@ use crate::types::types_library_entry::LibraryFilterEntry;
 use crate::types::types_library_entry::TrackFile;
 use crate::types::types_tui::Color;
 use crate::types::types_tui::Format;
-use crate::types::types_tui::TermSize;
 use crate::types::types_tui::TermState;
 use crate::ui::utils::ui_loading_icon_util::loading_icon;
+use crate::ui::utils::ui_time_util::render_duration;
 use arrayvec::ArrayString;
 use std::fmt::Write;
 use std::iter::repeat;
@@ -24,6 +24,7 @@ pub struct RenderDataViewLibrary {
     pub column_selected: LibraryColumn,
     pub tab_selected: LibraryTab,
     pub track_select_mode: LibrarySelectMode,
+    pub list_height: usize,
     pub left: Vec<LibraryFilterEntry>,
     pub left_selected: usize,
     pub right: Vec<TrackFile>,
@@ -32,23 +33,23 @@ pub struct RenderDataViewLibrary {
 
 pub fn draw_library_view(
     output: &mut TermState,
-    size: TermSize,
     common: &RenderDataCommon,
     view: RenderDataViewLibrary,
 ) {
-    let filter_width = (size.width / 3).min(45);
-    let track_width = size.width - filter_width - 1;
+    let width = common.term_size.width;
+    let filter_width = (width / 3).min(45);
+    let track_width = width - filter_width - 1;
 
     render_header(
         output,
-        size.width,
+        width,
         filter_width,
         common,
         view.tab_selected,
         view.track_select_mode,
     );
 
-    for i in 0..size.height.saturating_sub(1) {
+    for i in 0..view.list_height {
         output.newline();
 
         match view.left.get(i).copied() {
@@ -319,15 +320,8 @@ fn render_track_row(
 
     // track duration
     {
-        let duration_sec = track.duration.as_secs();
-        let seconds = duration_sec % 60;
-        let minutes = duration_sec / 60 % 60;
-        let hours   = duration_sec / 60 / 60;
         output.text_buf.clear();
-        match hours > 0 {
-            false => write!(&mut output.text_buf,       "{:02}:{:02}",        minutes, seconds).unwrap(),
-            true  => write!(&mut output.text_buf, "{:02}:{:02}:{:02}", hours, minutes, seconds).unwrap(),
-        };
+        render_duration(&mut output.text_buf, track.duration);
         output.format(format_yellow);
         output.frame.push_str(&output.text_buf);
     }

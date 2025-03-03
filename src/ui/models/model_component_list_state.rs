@@ -9,14 +9,14 @@ const PADDING: usize = 2;
 #[derive(Clone)]
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
-pub struct SortedListState<T: Clone + Debug + Eq + Ord + Listable> {
+pub struct SortedListState<T: Clone + Copy + Debug + Eq + Ord + Listable> {
     unique: bool,
     selected: usize,
     scroll_anchor: usize,
     entries: Vec<T>,
 }
 
-impl<'a, T: Clone + Debug + Eq + Ord + Listable> SortedListState<T> {
+impl<'a, T: Clone + Copy + Debug + Eq + Ord + Listable> SortedListState<T> {
     pub fn new(unique: bool) -> Self {
         SortedListState{
             unique,
@@ -38,6 +38,10 @@ impl<'a, T: Clone + Debug + Eq + Ord + Listable> SortedListState<T> {
 
     pub fn entries(&self) -> &Vec<T> {
         &self.entries
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
     }
 
     // -- selection -------------------------------------------------
@@ -116,14 +120,14 @@ impl<'a, T: Clone + Debug + Eq + Ord + Listable> SortedListState<T> {
 
     // -- render ----------------------------------------------------
 
-    /// will only output correct data if update_scroll
+    /// will only output correct data if update_scroll has been called
     pub fn view(&mut self, term_height: usize) -> (Vec<T>, usize) {
         self.update_scroll(term_height);
 
         let viewable_elements = self.entries.iter()
             .skip(self.scroll_anchor)
             .take(term_height)
-            .cloned()
+            .copied()
             .collect::<Vec<T>>();
         let selected = self.selected.saturating_sub(self.scroll_anchor);
 

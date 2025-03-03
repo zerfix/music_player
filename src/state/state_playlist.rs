@@ -1,12 +1,18 @@
 use crate::types::types_library_entry::LibraryFilterEntry;
 use crate::types::types_library_entry::TrackFile;
+use std::time::Duration;
+use std::time::Instant;
 
+//-//////////////////////////////////////////////////////////////////
+//
 //-//////////////////////////////////////////////////////////////////
 #[derive(Clone)]
 #[derive(Debug)]
 pub struct StatePlaylist {
     pub list: Vec<TrackFile>,
     pub selected: usize,
+    pub playing_since: Option<Instant>,
+    pub played_acc: Duration,
 }
 
 #[derive(Clone, Copy)]
@@ -23,6 +29,8 @@ impl StatePlaylist {
         StatePlaylist{
             list: vec![],
             selected: 0,
+            playing_since: None,
+            played_acc: Duration::default(),
         }
     }
 
@@ -36,6 +44,8 @@ impl StatePlaylist {
 
     pub fn next(&mut self) {
         self.selected += 1;
+        self.playing_since = Some(Instant::now());
+        self.played_acc = Duration::default();
     }
 
     pub fn previous(&mut self) {
@@ -43,11 +53,51 @@ impl StatePlaylist {
             0 => {},
             _ => self.selected -= 1,
         }
+        self.playing_since = Some(Instant::now());
+        self.played_acc = Duration::default();
+    }
+
+    pub fn pause(&mut self) {
+        if let Some(playing_since) = self.playing_since {
+            self.played_acc += playing_since.elapsed();
+            self.playing_since = None;
+        }
+    }
+
+    pub fn resume(&mut self) {
+        if self.playing_since.is_none() {
+            self.playing_since = Some(Instant::now());
+        }
+    }
+
+    pub fn playback_progress(&self) -> Option<(bool, Duration, f64, Duration)> {
+        let track = self.list.get(self.selected)?;
+
+        let playing = self.playing_since.is_some();
+
+        let elapsed = {
+            let add = match self.playing_since {
+                None                => Duration::default(),
+                Some(playing_since) => playing_since.elapsed(),
+            };
+            self.played_acc + add
+        };
+
+        let progress = {
+            let len = track.duration;
+            elapsed.as_secs_f64() / len.as_secs_f64()
+        };
+
+        let total = track.duration;
+
+        Some((playing, elapsed, progress, total))
     }
 
     pub fn replace(&mut self, list: Vec<TrackFile>, selected: usize) {
         self.list = list;
         self.selected = selected;
+        self.playing_since = None;
+        self.played_acc = Duration::default();
     }
 
     pub fn append(&mut self, track: TrackFile) {
@@ -57,6 +107,8 @@ impl StatePlaylist {
     pub fn clear(&mut self) {
         self.list.clear();
         self.selected = 0;
+        self.playing_since = None;
+        self.played_acc = Duration::default();
     }
 
     pub fn get_playback_state_for_filter(&self, entry: LibraryFilterEntry) -> PlaybackState {
@@ -104,4 +156,6 @@ impl StatePlaylist {
         }
     }
 }
+//-//////////////////////////////////////////////////////////////////
+//
 //-//////////////////////////////////////////////////////////////////
