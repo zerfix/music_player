@@ -35,6 +35,17 @@ pub struct TrackFile {
     pub track_number : Option<u8>,
 }
 
+fn str_trunc<const L: usize>(text: &str) -> ArrayString<L> {
+    let mut arr = ArrayString::<L>::new();
+    if text.len() > L {
+        arr.push_str(&text[..L-1]);
+        arr.push_str(">");
+    } else {
+        arr.push_str(&text[..L.min(text.len())]);
+    }
+    arr
+}
+
 impl TrackFile {
     pub fn new(path: &Path) -> Result<TrackFile> {
         let file = read_from_path(path)?;
@@ -45,31 +56,17 @@ impl TrackFile {
         let duration = properties.duration();
         let year     = primary.year().map(|y| y as u16);
 
-        let track_artist = primary.artist().map(String::from).filter(|s| !s.is_empty());
-        let track_title  = primary.title() .map(String::from).filter(|s| !s.is_empty()).ok_or_eyre("missing track name")?;
+        let track_artist = primary.artist().map(|s| str_trunc::<64>(&s));
+        let track_title  = primary.title().map(|s| str_trunc::<128>(&s)).ok_or_eyre("missing track name")?;
         let track_number = primary.track().map(|t| t as u8);
 
-        let album_artist = primary.get_string(&ItemKey::AlbumArtist).filter(|s| !s.is_empty());
-        let album_artist = album_artist.map(String::from).or(track_artist.clone());
-        let album_title = primary.album().filter(|s| !s.is_empty());
+        let album_artist = primary.get_string(&ItemKey::AlbumArtist).filter(|s| !s.is_empty()).map(|s| str_trunc(&s)).or(track_artist);
+        let album_title  = primary.album().filter(|s| !s.is_empty()).map(|s| str_trunc(&s));
         let album_number = primary.disk().map(|n| n as u8);
 
-        let id_artist = {
-            let artist = album_artist.clone().unwrap_or_default().to_lowercase();
-            hash(&artist)
-        };
-
-        let id_album = {
-            let album_title = album_title.clone().unwrap_or_default().to_lowercase();
-            hash(&(id_artist, album_title))
-        };
-
-        let id_track = hash(&path.to_str().unwrap().to_lowercase());
-
-        let album_artist = album_artist.map(|aa| TrackFile::truncate_names(&aa));
-        let album_title  = album_title.map(|at| TrackFile::truncate_names(&at));
-        let track_artist = track_artist.map(|ta| TrackFile::truncate_names(&ta));
-        let track_title  = TrackFile::truncate_names(&track_title);
+        let id_artist = hash(&album_artist.unwrap_or_default().to_lowercase());
+        let id_album  = hash(&(id_artist, album_title.unwrap_or_default().to_lowercase()));
+        let id_track  = hash(&path.to_string_lossy().to_lowercase());
 
         Ok(TrackFile{
             is_album_padding: false,
@@ -86,17 +83,6 @@ impl TrackFile {
             track_title,
             track_number,
         })
-    }
-
-    fn truncate_names<const L: usize>(text: &str) -> ArrayString<L> {
-        let mut arr = ArrayString::<L>::new();
-        if text.len() > L {
-            arr.push_str(&text[..L-1]);
-            arr.push_str(">");
-        } else {
-            arr.push_str(&text[..L.min(text.len())]);
-        }
-        arr
     }
 
     fn compare_values(&self) -> (Option<u16>, Option<String>, Option<String>, Option<u8>, bool, Option<u8>) {
