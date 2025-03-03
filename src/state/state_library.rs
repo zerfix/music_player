@@ -99,13 +99,14 @@ impl StateLibrary {
                             LibrarySelectMode::Album  => t.id_album  == entry.id_album,
                             LibrarySelectMode::Track  => t.id_track  == entry.id_track,
                         })
-                        .cloned()
                         .collect::<Vec<TrackFile>>();
-                    let album_offset = self.list_tracks.entries().iter()
-                        .take(self.list_tracks.selected_index())
-                        .filter(|t| !t.is_selectable())
-                        .count();
-                    let index = self.list_tracks.selected_index() - album_offset;
+                    let index = tracks.iter()
+                        .enumerate()
+                        .find_map(|(index, track)| match track.id_track == entry.id_track {
+                            false => None,
+                            true  => Some(index),
+                        })
+                        .unwrap_or(0);
                     global(InputGlobalEffect::ReplaceTracksAndPlay{tracks, index})
                 },
             },
