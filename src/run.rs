@@ -17,6 +17,9 @@ use std::thread;
 #[macro_export]
 macro_rules! spawn_thread {
     ($channels:expr, $name:expr, $func:expr) => {{
+        if $name.len() <= 15 {
+            warn!("Thread name {} longer than 15 and is cut off, at least in htop", $name);
+        }
         let tx = $channels;
         thread::Builder::new()
             .name($name.to_string())

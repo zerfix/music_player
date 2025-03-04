@@ -182,7 +182,7 @@ impl PlaybackManager {
             manager.play(Box::new(sound));
             IS_PLAYING.store(true, Ordering::Relaxed);
 
-            spawn_thread!(self.channels.clone(), "song-complete-notifier", move |tx: MsgChannels| {
+            spawn_thread!(self.channels.clone(), "play-callback", move |tx: MsgChannels| {
                 let res = notifier.recv()
                     .context("Awaiting track playback completed callback")
                     .note("This error is expected when playback is intentionally stopped.");
