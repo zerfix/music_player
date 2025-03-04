@@ -10,6 +10,7 @@ use directories::ProjectDirs;
 use std::fs::read_to_string;
 use std::fs::File;
 use std::panic;
+use std::thread;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
@@ -77,6 +78,9 @@ pub fn init() -> Result<()> {
 
         // log hook on thread panic
         panic::set_hook(Box::new(|panic_info| {
+            let thread = thread::current();
+            let name   = thread.name().unwrap_or("<name not found>");
+
             let backtrace = BacktracePrinter::new().format_trace_to_string(&Backtrace::new())
                 .unwrap_or("<Backtrace failed>".to_string());
 
@@ -88,7 +92,7 @@ pub fn init() -> Result<()> {
                 .downcast_ref::<&str>()
                 .unwrap_or(&"Unknown panic");
 
-            error!("Thread panicked at {}: {}\n{}", location, message, backtrace);
+            error!("Thread '{}' panicked at {}: {}\n{}", name, location, message, backtrace);
         }));
     }
 
