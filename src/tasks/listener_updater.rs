@@ -9,7 +9,7 @@ use std::time::Instant;
 // 
 //-////////////////////////////////////////////////////////////////////////////
 /// Spams the state thread to trigger updates of playback elapsed and playback progress
-pub fn start_updater(rx: Receiver<bool>, tx: MsgChannels) {
+pub fn start_updater(tx: MsgChannels, rx: Receiver<bool>) {
     loop {
         if let true = rx.recv().unwrap() {
             loop {

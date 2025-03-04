@@ -29,7 +29,7 @@ pub enum StateActions {
     Render(),
 }
 
-pub fn start_state_listener(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) {
+pub fn start_state_listener(tx: MsgChannels, rx: Receiver<(Instant, StateActions)>) {
     if let Err(err) = state_loop(rx, tx.clone()) {
         error!("error: {:?}", err);
         tx.exit.send(Err(err)).unwrap();

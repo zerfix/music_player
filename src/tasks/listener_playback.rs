@@ -34,7 +34,7 @@ pub enum PlaybackActions {
     Clear,
 }
 
-pub fn start_playback_listener(rx: Receiver<PlaybackActions>, tx: MsgChannels) {
+pub fn start_playback_listener(tx: MsgChannels, rx: Receiver<PlaybackActions>) {
     if let Err(err) = playback_loop(rx, &tx) {
         error!("Playback error: {}", err);
         tx.exit.send(Err(err)).unwrap();

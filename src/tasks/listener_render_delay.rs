@@ -9,7 +9,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 //-//////////////////////////////////////////////////////////////////
-pub fn start_render_delay(rx: Receiver<Instant>, tx: MsgChannels) {
+pub fn start_render_delay(tx: MsgChannels, rx: Receiver<Instant>) {
     if let Err(err) = render_delay(rx, &tx) {
         error!("Render delay error: {}", err);
         tx.exit.send(Err(err)).unwrap();

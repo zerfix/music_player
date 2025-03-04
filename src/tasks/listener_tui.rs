@@ -47,7 +47,7 @@ pub enum RenderDataView {
     Library(RenderDataViewLibrary),
 }
 
-pub fn start_tui_listener(rx: Receiver<RenderActions>, tx: MsgChannels, tx_tui_done: Sender<()>) {
+pub fn start_tui_listener(tx: MsgChannels, tx_tui_done: Sender<()>, rx: Receiver<RenderActions>) {
     // -- Init Tui --------------------------------------------------
     info!("Setting up terminal...");
     let mut stdout = stdout();

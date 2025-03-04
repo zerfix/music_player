@@ -7,7 +7,6 @@ use crate::types::types_library_entry::LibraryArtistEntry;
 use crate::types::types_library_entry::LibraryFilterEntry;
 use crate::types::types_library_entry::TrackFile;
 use crate::ui::models::model_component_list_state::SortedListState;
-use color_eyre::eyre::eyre;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use strum_macros::IntoStaticStr;
