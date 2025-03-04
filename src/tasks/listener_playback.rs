@@ -1,3 +1,4 @@
+use crate::spawn_thread;
 use crate::tasks::listener_state::StateActions;
 use crate::types::types_library_entry::TrackFile;
 use crate::types::types_msg_channels::MsgChannels;
@@ -11,14 +12,18 @@ use awedio::sounds::MemorySound;
 use awedio::Sound;
 use color_eyre::eyre::Context;
 use color_eyre::Result;
+use color_eyre::Section;
 use crossbeam_channel::Receiver;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::thread;
-use std::thread::JoinHandle;
 use std::time::Duration;
 use std::time::Instant;
+
+static IS_PLAYING: AtomicBool = AtomicBool::new(false);
 
 //-//////////////////////////////////////////////////////////////////
 pub enum PlaybackActions {
@@ -71,7 +76,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                         tx.state.send((Instant::now(), StateActions::PlaybackNextTrack{error: Some(err)}))?;
                         continue;
                     }
-                    state.start(start_at);
+                    state.start(start_at)?;
                 },
                 PlaybackActions::Que { track } => {
                     let path = match tracks.get(&track.id_track) {
@@ -93,7 +98,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                     }
                 },
                 PlaybackActions::Callback => {
-                    state.next();
+                    state.next()?;
                     tx.state.send((Instant::now(), StateActions::PlaybackNextTrack{error: None}))?;
                 },
                 PlaybackActions::Pause => {
@@ -103,10 +108,10 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                     state.resume();
                 },
                 PlaybackActions::Forward(duration) => {
-                    state.start(Some(duration));
+                    state.start(Some(duration))?;
                 },
                 PlaybackActions::Next => {
-                    state.next();
+                    state.next()?;
                     tx.state.send((Instant::now(), StateActions::PlaybackNextTrack { error: None }))?;
                 },
                 PlaybackActions::Clear => {
@@ -118,33 +123,28 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
 }
 
 struct PlaybackManager {
-    channels: MsgChannels,
-    manager: Manager,
-    backend: CpalBackend,
-    current_controller: Option<Controller<Pausable<CompletionNotifier<MemorySound>>>>,
-    current_notifier: Option<JoinHandle<()>>,
-    que: VecDeque<MemorySound>,
+    channels  : MsgChannels,
+    playback  : Option<Playback>,
+    que       : VecDeque<MemorySound>,
+}
+struct Playback {
+    pub manager   : Manager,
+    pub backend   : CpalBackend,
+    pub controller: Controller<Pausable<CompletionNotifier<MemorySound>>>,
 }
 
 impl PlaybackManager {
     pub fn new(channels: MsgChannels) -> Result<PlaybackManager> {
-        let (manager, backend) = awedio::start()?;
         Ok(PlaybackManager {
             channels,
-            manager,
-            backend,
-            current_controller: None,
-            current_notifier: None,
+            playback: None,
             que: VecDeque::new(),
         })
     }
 
     pub fn stop(&mut self) {
-        if let Some(controller) = &mut self.current_controller {
-            controller.set_paused(true);
-        }
-        self.current_controller = None;
-        self.current_notifier   = None;
+        IS_PLAYING.store(false, Ordering::Relaxed);
+        self.playback = None;
     }
 
     pub fn clear(&mut self) {
@@ -162,7 +162,12 @@ impl PlaybackManager {
     pub fn start(
         &mut self,
         start_at: Option<Duration>,
-    ) {
+    ) -> Result<()> {
+        if self.que.is_empty() {
+            self.clear();
+            return Ok(());
+        }
+        self.stop();
         if let Some(sound) = self.que.front() {
             let (    sound, notifier  ) = sound.clone().with_completion_notifier();
             let (mut sound, controller) = sound.pausable().controllable();
@@ -171,36 +176,51 @@ impl PlaybackManager {
                 let _ = sound.skip(duration);
             }
 
-            if self.current_controller.is_some() {self.stop()}
-            self.manager.play(Box::new(sound));
+            // Note that output is always sent to alsa as long as manager and backend lives.
+            // Witch causes CPU usage and makes app show up in mixer.
+            let (mut manager, backend) = awedio::start().context("Starting audio output")?;
+            manager.play(Box::new(sound));
+            IS_PLAYING.store(true, Ordering::Relaxed);
 
-            let tx_playback = self.channels.playback.clone();
-            let notifier = thread::spawn(move || {
-                notifier.recv().unwrap();
-                tx_playback.send(PlaybackActions::Callback).unwrap();
+            spawn_thread!(self.channels.clone(), "song-complete-notifier", move |tx: MsgChannels| {
+                let res = notifier.recv()
+                    .context("Awaiting track playback completed callback")
+                    .note("This error is expected when playback is intentionally stopped.");
+                match res {
+                    Err(err) => match IS_PLAYING.load(Ordering::Relaxed) {
+                        true  => error!("{:?}", err),
+                        false => info!("No longer listening for end of track. Track has been stopped."),
+                    },
+                    Ok(_) => tx.playback.send(PlaybackActions::Callback).unwrap(),
+                }
+            })?;
+
+            self.playback = Some(Playback{
+                manager,
+                backend,
+                controller
             });
-
-            self.current_controller = Some(controller);
-            self.current_notifier = Some(notifier);
-            self.channels.state.send((Instant::now(), StateActions::PlaybackPlay())).unwrap();
+            self.channels.state.send((Instant::now(), StateActions::PlaybackPlay()))?;
         }
+        Ok(())
     }
 
-    pub fn next(&mut self) {
+    pub fn next(&mut self) -> Result<()> {
         self.que.pop_front();
-        self.start(None);
+        self.start(None)?;
+        Ok(())
     }
 
     pub fn pause(&mut self) {
-        if let Some(controller) = &mut self.current_controller {
-            controller.set_paused(true);
+        if let Some(playback) = &mut self.playback {
+            playback.controller.set_paused(true);
             self.channels.state.send((Instant::now(), StateActions::PlaybackPause())).unwrap();
         }
     }
 
     pub fn resume(&mut self) {
-        if let Some(controller) = &mut self.current_controller {
-            controller.set_paused(false);
+        if let Some(playback) = &mut self.playback {
+            playback.controller.set_paused(false);
             self.channels.state.send((Instant::now(), StateActions::PlaybackPlay())).unwrap();
         }
     }

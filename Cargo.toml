@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [profile.dev]
-opt-level = 1
-lto = "thin"
+opt-level = 1 # 0 makes loading of tracks really slow
 
 [profile.release]
 opt-level = 2

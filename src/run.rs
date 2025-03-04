@@ -14,6 +14,7 @@ use crossbeam_channel::bounded;
 use std::thread;
 
 //-////////////////////////////////////////////////////////////////////////////
+#[macro_export]
 macro_rules! spawn_thread {
     ($channels:expr, $name:expr, $func:expr) => {{
         let tx = $channels;
