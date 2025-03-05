@@ -149,8 +149,9 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                     StateActions::PlaybackNextTrack{error} => {
                         state.mutate(|_, _, playlist| {
                             playlist.next();
-                            if let Some(track) = playlist.get_next_track() {
-                                tx.playback.send(PlaybackActions::Que{track: Box::new(track)}).unwrap();
+                            match playlist.get_next_track() {
+                                Some(track) => tx.playback.send(PlaybackActions::Que{track: Box::new(track)}).unwrap(),
+                                None => tx.update.send(false).unwrap(),
                             }
                         });
                     },
