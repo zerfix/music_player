@@ -118,8 +118,8 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                                 tx.playback.send(PlaybackActions::Clear).unwrap();
                                 tx.update.send(false).unwrap();
                             },
-                            InputGlobal::SkipBackward => {
-                                let dur     = Duration::from_secs(10);
+                            InputGlobal::SkipBackward{sec} => {
+                                let dur     = Duration::from_secs(sec as u64);
                                 let elapsed = playlist.elapsed();
                                 match elapsed < dur {
                                     true => {
@@ -135,8 +135,8 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                                 }
                                 tx.update.send(true).unwrap();
                             },
-                            InputGlobal::SkipForward  => {
-                                let dur     = Duration::from_secs(10);
+                            InputGlobal::SkipForward{sec} => {
+                                let dur     = Duration::from_secs(sec as u64);
                                 let elapsed = playlist.elapsed();
                                 let new_elapsed = elapsed + dur;
                                 tx.playback.send(PlaybackActions::Resume(new_elapsed)).unwrap();

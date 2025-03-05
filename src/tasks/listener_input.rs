@@ -6,7 +6,6 @@ use color_eyre::Result;
 use crossterm::event;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
-use crossterm::event::KeyModifiers;
 use crossterm::event::MouseEventKind;
 use std::time::Instant;
 
@@ -45,8 +44,10 @@ fn input_loop(tx: &MsgChannels) -> Result<()> {
                     KeyCode::Char('v') => send_g(InputGlobal::Stop)?,
                     KeyCode::Char('b') => send_g(InputGlobal::Next)?,
                     
-                    KeyCode::Char('f') => send_g(InputGlobal::SkipBackward)?,
-                    KeyCode::Char('g') => send_g(InputGlobal::SkipForward)?,
+                    KeyCode::Char('f') => send_g(InputGlobal::SkipBackward{sec: 10})?,
+                    KeyCode::Char('F') => send_g(InputGlobal::SkipBackward{sec: 60})?,
+                    KeyCode::Char('g') => send_g(InputGlobal::SkipForward{sec: 10})?,
+                    KeyCode::Char('G') => send_g(InputGlobal::SkipForward{sec: 60})?,
                     
                     KeyCode::Char('e') => send_l(InputLocal::Select)?,
                     // vim
@@ -60,8 +61,10 @@ fn input_loop(tx: &MsgChannels) -> Result<()> {
                     KeyCode::Char('i') => send_g(InputGlobal::Stop)?,
                     KeyCode::Char('o') => send_g(InputGlobal::Next)?,
                     
-                    KeyCode::Char('n') => send_g(InputGlobal::SkipBackward)?,
-                    KeyCode::Char('m') => send_g(InputGlobal::SkipForward)?,
+                    KeyCode::Char('n') => send_g(InputGlobal::SkipBackward{sec: 10})?,
+                    KeyCode::Char('N') => send_g(InputGlobal::SkipBackward{sec: 60})?,
+                    KeyCode::Char('m') => send_g(InputGlobal::SkipForward{sec: 10})?,
+                    KeyCode::Char('M') => send_g(InputGlobal::SkipForward{sec: 60})?,
                     
                     KeyCode::Enter     => send_l(InputLocal::Select)?,
                     // extra
@@ -77,10 +80,8 @@ fn input_loop(tx: &MsgChannels) -> Result<()> {
                     KeyCode::Home      => send_l(InputLocal::Home)?,
                     KeyCode::End       => send_l(InputLocal::End)?,
 
-                    KeyCode::Tab       => match key.modifiers {
-                        KeyModifiers::SHIFT => send_l(InputLocal::RevTab)?,
-                        _                   => send_l(InputLocal::Tab)?,
-                    },
+                    KeyCode::Tab       => send_l(InputLocal::Tab)?,
+                    KeyCode::BackTab   => send_l(InputLocal::RevTab)?,
                     // Exit
                     KeyCode::Esc |
                     KeyCode::Char('q') => tx.exit.send(Ok("".to_string()))?,

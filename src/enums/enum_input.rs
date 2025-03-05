@@ -30,8 +30,8 @@ pub enum InputGlobal {
     Stop,
     Next,
     Previous,
-    SkipForward,
-    SkipBackward,
+    SkipForward{sec: u8},
+    SkipBackward{sec: u8},
 }
 
 //-//////////////////////////////////////////////////////////////////
