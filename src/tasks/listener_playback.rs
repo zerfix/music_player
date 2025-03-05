@@ -32,8 +32,6 @@ pub enum PlaybackActions {
     Replay,
     Pause,
     Resume(Duration),
-    /// duration from start of track
-    Forward(Duration),
     Next,
     Callback,
     Clear,
@@ -109,9 +107,6 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                 },
                 PlaybackActions::Resume(resume_at) => {
                     state.resume(resume_at)?;
-                },
-                PlaybackActions::Forward(duration) => {
-                    state.start(Some(duration))?;
                 },
                 PlaybackActions::Next => {
                     state.next()?;

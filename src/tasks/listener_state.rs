@@ -118,8 +118,32 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                                 tx.playback.send(PlaybackActions::Clear).unwrap();
                                 tx.update.send(false).unwrap();
                             },
-                            InputGlobal::SkipBackward => todo!(),
-                            InputGlobal::SkipForward  => todo!(),
+                            InputGlobal::SkipBackward => {
+                                let dur     = Duration::from_secs(10);
+                                let elapsed = playlist.elapsed();
+                                match elapsed < dur {
+                                    true => {
+                                        tx.playback.send(PlaybackActions::Replay).unwrap();
+                                        playlist.replay();
+                                    },
+                                    false => {
+                                        let new_elapsed = elapsed - dur;
+                                        tx.playback.send(PlaybackActions::Resume(new_elapsed)).unwrap();
+                                        playlist.played_acc = new_elapsed;
+                                        playlist.playing_since = Some(Instant::now());
+                                    },
+                                }
+                                tx.update.send(true).unwrap();
+                            },
+                            InputGlobal::SkipForward  => {
+                                let dur     = Duration::from_secs(10);
+                                let elapsed = playlist.elapsed();
+                                let new_elapsed = elapsed + dur;
+                                tx.playback.send(PlaybackActions::Resume(new_elapsed)).unwrap();
+                                playlist.played_acc    = new_elapsed;
+                                playlist.playing_since = Some(Instant::now());
+                                tx.update.send(true).unwrap();
+                            },
                         });
                     },
                     StateActions::PlaybackNextTrack{error} => {
