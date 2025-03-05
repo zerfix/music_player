@@ -7,7 +7,6 @@ use awedio::manager::Manager;
 use awedio::sounds::open_file;
 use awedio::sounds::wrappers::CompletionNotifier;
 use awedio::sounds::wrappers::Controller;
-use awedio::sounds::wrappers::Pausable;
 use awedio::sounds::MemorySound;
 use awedio::Sound;
 use color_eyre::eyre::Context;
@@ -31,7 +30,7 @@ pub enum PlaybackActions {
     Play{track: Box<TrackFile>, start_at: Option<Duration>},
     Que{track: Box<TrackFile>},
     Pause,
-    Resume,
+    Resume(Duration),
     /// duration from start of track
     Forward(Duration),
     Next,
@@ -104,8 +103,8 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                 PlaybackActions::Pause => {
                     state.pause();
                 },
-                PlaybackActions::Resume => {
-                    state.resume();
+                PlaybackActions::Resume(resume_at) => {
+                    state.resume(resume_at)?;
                 },
                 PlaybackActions::Forward(duration) => {
                     state.start(Some(duration))?;
@@ -130,7 +129,7 @@ struct PlaybackManager {
 struct Playback {
     pub manager   : Manager,
     pub backend   : CpalBackend,
-    pub controller: Controller<Pausable<CompletionNotifier<MemorySound>>>,
+    pub controller: Controller<CompletionNotifier<MemorySound>>,
 }
 
 impl PlaybackManager {
@@ -170,7 +169,7 @@ impl PlaybackManager {
         self.stop();
         if let Some(sound) = self.que.front() {
             let (    sound, notifier  ) = sound.clone().with_completion_notifier();
-            let (mut sound, controller) = sound.pausable().controllable();
+            let (mut sound, controller) = sound.controllable();
 
             if let Some(duration) = start_at {
                 let _ = sound.skip(duration);
@@ -212,17 +211,14 @@ impl PlaybackManager {
     }
 
     pub fn pause(&mut self) {
-        if let Some(playback) = &mut self.playback {
-            playback.controller.set_paused(true);
-            self.channels.state.send((Instant::now(), StateActions::PlaybackPause())).unwrap();
-        }
+        self.stop();
+        self.channels.state.send((Instant::now(), StateActions::PlaybackPause())).unwrap();
     }
 
-    pub fn resume(&mut self) {
-        if let Some(playback) = &mut self.playback {
-            playback.controller.set_paused(false);
-            self.channels.state.send((Instant::now(), StateActions::PlaybackPlay())).unwrap();
-        }
+    pub fn resume(&mut self, resume_at: Duration) -> Result<()> {
+        self.start(Some(resume_at))?;
+        self.channels.state.send((Instant::now(), StateActions::PlaybackPlay())).unwrap();
+        Ok(())
     }
 }
 //-//////////////////////////////////////////////////////////////////

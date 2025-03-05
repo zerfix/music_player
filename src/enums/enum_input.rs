@@ -51,10 +51,8 @@ pub enum InputLocalEffect {
 
 #[derive(Debug)]
 pub enum InputGlobalEffect {
-    PlayPause,
     ReplaceTracksAndPlay{tracks: Vec<TrackFile>, index: usize},
     AppendTracks(Vec<TrackFile>),
-    ClearTracks,
 }
 
 pub enum InputEffect {

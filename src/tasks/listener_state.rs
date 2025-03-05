@@ -68,8 +68,6 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                                             tx.playback.send(PlaybackActions::Que{track: Box::new(track)}).unwrap();
                                         }
                                     },
-                                    InputGlobalEffect::PlayPause => todo!(),
-                                    InputGlobalEffect::ClearTracks => todo!(),
                                 },
                                 InputEffect::None => {},
                             };
@@ -77,7 +75,20 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                     },
                     StateActions::InputGlobal(input) => {
                         state.mutate(|_, _, playlist| match input {
-                            InputGlobal::PlayPause => {},
+                            InputGlobal::PlayPause => {
+                                match playlist.playing_since.is_some() {
+                                    true => {
+                                        tx.playback.send(PlaybackActions::Pause).unwrap();
+                                        playlist.pause();
+                                        tx.update.send(false).unwrap();
+                                    },
+                                    false => {
+                                        tx.playback.send(PlaybackActions::Resume(playlist.played_acc)).unwrap();
+                                        playlist.resume();
+                                        tx.update.send(true).unwrap();
+                                    },
+                                }
+                            },
                             InputGlobal::Previous => {
                                 playlist.previous();
                                 tx.playback.send(PlaybackActions::Clear).unwrap();
