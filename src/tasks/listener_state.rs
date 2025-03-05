@@ -10,6 +10,7 @@ use crate::types::types_msg_channels::MsgChannels;
 use color_eyre::Report;
 use color_eyre::Result;
 use crossbeam_channel::Receiver;
+use std::time::Duration;
 use std::time::Instant;
 
 //-////////////////////////////////////////////////////////////////////////////
@@ -90,13 +91,23 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                                 }
                             },
                             InputGlobal::Previous => {
-                                playlist.previous();
-                                tx.playback.send(PlaybackActions::Clear).unwrap();
-                                if let Some(track) = playlist.get_current_track() {
-                                    tx.playback.send(PlaybackActions::Play{track: Box::new(track), start_at: None}).unwrap();
-                                }
-                                if let Some(track) = playlist.get_next_track() {
-                                    tx.playback.send(PlaybackActions::Que{track: Box::new(track)}).unwrap();
+                                match playlist.elapsed() > Duration::from_secs(5) {
+                                    true => {
+                                        tx.playback.send(PlaybackActions::Replay).unwrap();
+                                        playlist.replay();
+                                        tx.update.send(true).unwrap();
+                                    },
+                                    false => {
+                                        playlist.previous();
+                                        tx.playback.send(PlaybackActions::Clear).unwrap();
+                                        if let Some(track) = playlist.get_current_track() {
+                                            tx.playback.send(PlaybackActions::Play{track: Box::new(track), start_at: None}).unwrap();
+                                            tx.update.send(true).unwrap();
+                                        }
+                                        if let Some(track) = playlist.get_next_track() {
+                                            tx.playback.send(PlaybackActions::Que{track: Box::new(track)}).unwrap();
+                                        }
+                                    },
                                 }
                             },
                             InputGlobal::Next => {

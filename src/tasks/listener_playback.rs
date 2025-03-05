@@ -29,6 +29,7 @@ pub enum PlaybackActions {
     NewTrack{track_id: u64, path: Box<Path>},
     Play{track: Box<TrackFile>, start_at: Option<Duration>},
     Que{track: Box<TrackFile>},
+    Replay,
     Pause,
     Resume(Duration),
     /// duration from start of track
@@ -99,6 +100,9 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                 PlaybackActions::Callback => {
                     state.next()?;
                     tx.state.send((Instant::now(), StateActions::PlaybackNextTrack{error: None}))?;
+                },
+                PlaybackActions::Replay => {
+                    state.start(None)?;
                 },
                 PlaybackActions::Pause => {
                     state.pause();

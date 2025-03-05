@@ -57,6 +57,11 @@ impl StatePlaylist {
         self.played_acc = Duration::default();
     }
 
+    pub fn replay(&mut self) {
+        self.playing_since = Some(Instant::now());
+        self.played_acc = Duration::default();
+    }
+
     pub fn pause(&mut self) {
         if let Some(playing_since) = self.playing_since {
             self.played_acc += playing_since.elapsed();
@@ -70,25 +75,20 @@ impl StatePlaylist {
         }
     }
 
+    pub fn elapsed(&self) -> Duration {
+        let add = match self.playing_since {
+            None                => Duration::default(),
+            Some(playing_since) => playing_since.elapsed(),
+        };
+        self.played_acc + add
+    }
+
     pub fn playback_progress(&self) -> Option<(bool, Duration, f64, Duration)> {
-        let track = self.list.get(self.selected)?;
-
-        let playing = self.playing_since.is_some();
-
-        let elapsed = {
-            let add = match self.playing_since {
-                None                => Duration::default(),
-                Some(playing_since) => playing_since.elapsed(),
-            };
-            self.played_acc + add
-        };
-
-        let progress = {
-            let len = track.duration;
-            elapsed.as_secs_f64() / len.as_secs_f64()
-        };
-
-        let total = track.duration;
+        let track    = self.list.get(self.selected)?;
+        let playing  = self.playing_since.is_some();
+        let elapsed  = self.elapsed();
+        let progress = elapsed.as_secs_f64() / track.duration.as_secs_f64();
+        let total    = track.duration;
 
         Some((playing, elapsed, progress, total))
     }
