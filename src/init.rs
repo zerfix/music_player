@@ -17,7 +17,7 @@ use tracing_subscriber::EnvFilter;
 //-////////////////////////////////////////////////////////////////////////////
 //
 //-////////////////////////////////////////////////////////////////////////////
-pub fn init() -> Result<()> {
+pub fn init() -> Result<bool> { // false means exit
     let config_path = ProjectDirs::from("", "", "music_player")
         .context("Getting project paths")?
         .config_dir()
@@ -38,7 +38,7 @@ pub fn init() -> Result<()> {
                     config_path.to_string_lossy()
                 ),
             }
-            return Ok(());
+            return Ok(false);
         }
 
         let config_raw = read_to_string(&config_path)
@@ -50,9 +50,10 @@ pub fn init() -> Result<()> {
 
         if config.media_dirs.is_empty() {
             println!("Please add your music directory to the config file at {}", config_path.to_string_lossy());
-            return Ok(());
+            return Ok(false);
         }
 
+        println!("writing config");
         CONFIG.set(config).unwrap();
     }
 
@@ -96,7 +97,7 @@ pub fn init() -> Result<()> {
         }));
     }
 
-    Ok(())
+    Ok(true)
 }
 //-////////////////////////////////////////////////////////////////////////////
 //

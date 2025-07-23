@@ -67,8 +67,9 @@ static CONFIG: std::sync::OnceLock<crate::types::config::Config> = std::sync::On
 //-////////////////////////////////////////////////////////////////////////////
 pub fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
-    init::init()?;
-    run::run()?;
+    if init::init()? {
+        run::run()?;
+    }
     Ok(())
 }
 //-////////////////////////////////////////////////////////////////////////////
