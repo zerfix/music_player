@@ -1,14 +1,14 @@
+use crate::globals::playback_state::PlaybackState;
 use crate::state::state_library::LibraryColumn;
 use crate::state::state_library::LibrarySelectMode;
 use crate::state::state_library::LibraryTab;
-use crate::state::state_playlist::PlaybackState;
+use crate::state::state_playlist::PlaylistState;
 use crate::tasks::listener_tui::RenderDataCommon;
 use crate::types::types_library_entry::LibraryFilterEntry;
 use crate::types::types_library_entry::TrackFile;
 use crate::types::types_tui::Color;
 use crate::types::types_tui::Format;
 use crate::types::types_tui::TermState;
-use crate::ui::utils::ui_loading_icon_util::loading_icon;
 use crate::ui::utils::ui_time_util::render_duration;
 use arrayvec::ArrayString;
 use std::fmt::Write;
@@ -36,7 +36,7 @@ pub fn draw_library_view(
     common: &RenderDataCommon,
     view: RenderDataViewLibrary,
 ) {
-    let width = common.term_size.width;
+    let width = common.term.width as usize;
     let filter_width = (width / 3).min(45);
     let track_width = width - filter_width - 1;
 
@@ -58,6 +58,7 @@ pub fn draw_library_view(
                 filter_width,
                 filter,
                 common.playlist.get_playback_state_for_filter(filter),
+                common.playback.state,
                 view.column_selected == LibraryColumn::Filter,
                 i == view.left_selected,
             ),
@@ -81,6 +82,7 @@ pub fn draw_library_view(
                 track_width,
                 *track,
                 common.playlist.get_playback_state_for_track(track.id_track),
+                common.playback.state,
                 view.column_selected == LibraryColumn::Tracks,
                 i == view.right_selected,
             ),
@@ -106,8 +108,8 @@ fn render_header(
 
     // loading icon
     {
-        let loading_icon = match common.is_scanning {
-            true  => loading_icon(common.interval),
+        let loading_icon = match common.term.is_scanning {
+            true  => common.term.loading_icon(),
             false => ' ',
         };
         output.frame.push(loading_icon);
@@ -134,6 +136,7 @@ fn render_filter_row(
     output: &mut TermState,
     width: usize,
     entry: LibraryFilterEntry,
+    playlist_state: PlaylistState,
     playback_state: PlaybackState,
     is_active: bool,
     is_selected: bool,
@@ -146,18 +149,18 @@ fn render_filter_row(
 
     // playback indicator
     {
-        let format = match (is_selected, playback_state) {
+        let format = match (is_selected, playlist_state) {
             (true , _                     ) => format,
-            (false, PlaybackState::None   ) => Format{fg: Color::Default, bg: Color::Default, bold: false},
-            (false, PlaybackState::Played ) => Format{fg: Color::Red    , bg: Color::Default, bold: false},
-            (false, PlaybackState::Playing) => Format{fg: Color::Yellow , bg: Color::Default, bold: false},
-            (false, PlaybackState::Queued ) => Format{fg: Color::Green  , bg: Color::Default, bold: false},
+            (false, PlaylistState::None   ) => Format{fg: Color::Default, bg: Color::Default, bold: true},
+            (false, PlaylistState::Played ) => Format{fg: Color::Red    , bg: Color::Default, bold: true},
+            (false, PlaylistState::Playing) => Format{fg: Color::Yellow , bg: Color::Default, bold: true},
+            (false, PlaylistState::Queued ) => Format{fg: Color::Green  , bg: Color::Default, bold: true},
         };
-        let icon = match playback_state {
-            PlaybackState::None    => ' ',
-            PlaybackState::Played  => '-',
-            PlaybackState::Playing => '>',
-            PlaybackState::Queued  => '+',
+        let icon = match playlist_state {
+            PlaylistState::None    => ' ',
+            PlaylistState::Played  => '-',
+            PlaylistState::Playing => playback_state.icon(),
+            PlaylistState::Queued  => '+',
         };
         output.format(format);
         output.frame.push(icon);
@@ -209,7 +212,7 @@ fn render_album_row(
         2.. => {
             output.frame.push(' ');
             output.format(Format{fg: Color::Cyan, bg: Color::Default, bold: true});
-            output.frame.extend(repeat('⎯').take(len_line-1));
+            output.frame.extend(repeat('━').take(len_line-1));
         }
     }
 
@@ -232,6 +235,7 @@ fn render_track_row(
     output: &mut TermState,
     width: usize,
     track: TrackFile,
+    playlist_state: PlaylistState,
     playback_state: PlaybackState,
     is_active: bool,
     is_selected: bool,
@@ -243,30 +247,30 @@ fn render_track_row(
     let len_dynamic  = width.saturating_sub(len_padding + len_playback + len_track + len_duration);
 
     let format_white = match (is_selected, is_active) {
-        (false, _    ) => Format{fg: Color::Default, bg: Color::Default, bold: false},
-        (true , false) => Format{fg: Color::Black  , bg: Color::Red    , bold: false},
+        (false, _    ) |
+        (true , false) => Format{fg: Color::Default, bg: Color::Default, bold: false},
         (true , true ) => Format{fg: Color::Black  , bg: Color::Cyan   , bold: false},
     };
     let format_yellow = match (is_selected, is_active) {
-        (false, _    ) => Format{fg: Color::Yellow, bg: Color::Default, bold: false},
-        (true , false) => Format{fg: Color::Black , bg: Color::Red    , bold: false},
+        (false, _    ) |
+        (true , false) => Format{fg: Color::Yellow, bg: Color::Default, bold: false},
         (true , true ) => Format{fg: Color::Black , bg: Color::Cyan   , bold: false},
     };
 
     // playback indicator
     {
-        let format = match (is_selected, playback_state) {
+        let format = match (is_active && is_selected, playlist_state) {
             (true , _                     ) => format_white,
-            (false, PlaybackState::None   ) => Format{fg: Color::Default, bg: Color::Default, bold: false},
-            (false, PlaybackState::Played ) => Format{fg: Color::Red    , bg: Color::Default, bold: false},
-            (false, PlaybackState::Playing) => Format{fg: Color::Yellow , bg: Color::Default, bold: false},
-            (false, PlaybackState::Queued ) => Format{fg: Color::Green  , bg: Color::Default, bold: false},
+            (false, PlaylistState::None   ) => Format{fg: Color::Default, bg: Color::Default, bold: true},
+            (false, PlaylistState::Played ) => Format{fg: Color::Red    , bg: Color::Default, bold: true},
+            (false, PlaylistState::Playing) => Format{fg: Color::Yellow , bg: Color::Default, bold: true},
+            (false, PlaylistState::Queued ) => Format{fg: Color::Green  , bg: Color::Default, bold: true},
         };
-        let icon = match playback_state {
-            PlaybackState::None    => ' ',
-            PlaybackState::Played  => '-',
-            PlaybackState::Playing => '>',
-            PlaybackState::Queued  => '+',
+        let icon = match playlist_state {
+            PlaylistState::None    => ' ',
+            PlaylistState::Played  => '-',
+            PlaylistState::Playing => playback_state.icon(),
+            PlaylistState::Queued  => '+',
         };
         output.format(format);
         output.frame.push(icon);

@@ -2,6 +2,8 @@ use crate::enums::enum_input::InputEffect;
 use crate::enums::enum_input::InputGlobal;
 use crate::enums::enum_input::InputGlobalEffect;
 use crate::enums::enum_input::InputLocal;
+use crate::globals::playback_state::GlobalPlayback;
+use crate::globals::playback_state::PlaybackState;
 use crate::state::state_app::AppState;
 use crate::tasks::listener_playback::PlaybackActions;
 use crate::tasks::listener_tui::RenderActions;
@@ -20,12 +22,7 @@ pub enum StateActions {
     InputLocal(InputLocal),
     InputGlobal(InputGlobal),
     PlaybackNextTrack{error: Option<Report>},
-    PlaybackPlay(),
-    PlaybackPause(),
-    ScanIsScanning{is_scanning: bool}, // used to show user if scanning on startup
     ScanAddSong{track: Box<TrackFile>},
-    ScanIndicatorRotate(u8),
-    Resize{height: u16, width: u16},
     Update(),
     Render(),
 }
@@ -77,32 +74,23 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                     StateActions::InputGlobal(input) => {
                         state.mutate(|_, _, playlist| match input {
                             InputGlobal::PlayPause => {
-                                match playlist.playing_since.is_some() {
-                                    true => {
-                                        tx.playback.send(PlaybackActions::Pause).unwrap();
-                                        playlist.pause();
-                                        tx.update.send(false).unwrap();
-                                    },
-                                    false => {
-                                        tx.playback.send(PlaybackActions::Resume(playlist.played_acc)).unwrap();
-                                        playlist.resume();
-                                        tx.update.send(true).unwrap();
-                                    },
+                                let progress = GlobalPlayback::read();
+                                match progress.state {
+                                    PlaybackState::Playing => tx.playback.send(PlaybackActions::Pause).unwrap(),
+                                    PlaybackState::Paused  => tx.playback.send(PlaybackActions::Resume(progress.elapsed())).unwrap(),
+                                    PlaybackState::Loading |
+                                    PlaybackState::Stopped => {},
                                 }
                             },
                             InputGlobal::Previous => {
-                                match playlist.elapsed() > Duration::from_secs(5) {
-                                    true => {
-                                        tx.playback.send(PlaybackActions::Replay).unwrap();
-                                        playlist.replay();
-                                        tx.update.send(true).unwrap();
-                                    },
+                                let progress = GlobalPlayback::read();
+                                match progress.elapsed() > Duration::from_secs(5) {
+                                    true => tx.playback.send(PlaybackActions::Replay).unwrap(),
                                     false => {
                                         playlist.previous();
                                         tx.playback.send(PlaybackActions::Clear).unwrap();
                                         if let Some(track) = playlist.get_current_track() {
                                             tx.playback.send(PlaybackActions::Play{track: Box::new(track), start_at: None}).unwrap();
-                                            tx.update.send(true).unwrap();
                                         }
                                         if let Some(track) = playlist.get_next_track() {
                                             tx.playback.send(PlaybackActions::Que{track: Box::new(track)}).unwrap();
@@ -116,71 +104,41 @@ fn state_loop(rx: Receiver<(Instant, StateActions)>, tx: MsgChannels) -> Result<
                             InputGlobal::Stop => {
                                 playlist.clear();
                                 tx.playback.send(PlaybackActions::Clear).unwrap();
-                                tx.update.send(false).unwrap();
                             },
                             InputGlobal::SkipBackward{sec} => {
                                 let dur     = Duration::from_secs(sec as u64);
-                                let elapsed = playlist.elapsed();
+                                let elapsed = GlobalPlayback::read().elapsed();
                                 match elapsed < dur {
                                     true => {
                                         tx.playback.send(PlaybackActions::Replay).unwrap();
-                                        playlist.replay();
                                     },
                                     false => {
                                         let new_elapsed = elapsed - dur;
                                         tx.playback.send(PlaybackActions::Resume(new_elapsed)).unwrap();
-                                        playlist.played_acc = new_elapsed;
-                                        playlist.playing_since = Some(Instant::now());
                                     },
                                 }
-                                tx.update.send(true).unwrap();
                             },
                             InputGlobal::SkipForward{sec} => {
                                 let dur     = Duration::from_secs(sec as u64);
-                                let elapsed = playlist.elapsed();
+                                let elapsed = GlobalPlayback::read().elapsed();
                                 let new_elapsed = elapsed + dur;
                                 tx.playback.send(PlaybackActions::Resume(new_elapsed)).unwrap();
-                                playlist.played_acc    = new_elapsed;
-                                playlist.playing_since = Some(Instant::now());
-                                tx.update.send(true).unwrap();
                             },
                         });
                     },
                     StateActions::PlaybackNextTrack{error} => {
+                        if let Some(err) = error {error!("{:?}", err)}
                         state.mutate(|_, _, playlist| {
                             playlist.next();
-                            match playlist.get_next_track() {
-                                Some(track) => tx.playback.send(PlaybackActions::Que{track: Box::new(track)}).unwrap(),
-                                None => tx.update.send(false).unwrap(),
+                            if let Some(track) = playlist.get_next_track() {
+                                tx.playback.send(PlaybackActions::Que{track: Box::new(track)}).unwrap();
                             }
                         });
                     },
-                    StateActions::PlaybackPlay()  => {
-                        state.mutate(|_, _, playlist| playlist.resume());
-                        tx.update.send(true).unwrap();
-                    },
-                    StateActions::PlaybackPause() => {
-                        state.mutate(|_, _, playback| playback.pause());
-                        tx.update.send(false).unwrap();
-                    },
-                    StateActions::ScanIsScanning{is_scanning} => state.mutate(|interface, _, _| {
-                        interface.is_scanning = is_scanning;
-                    }),
                     StateActions::ScanAddSong{track} => state.mutate(|_, library, _| {
                         library.new_track(*track);
                         info!("{} tracks", library.tracks.len());
                     }),
-                    StateActions::ScanIndicatorRotate(interval) => {
-                        state.mutate(|interface, _, _| {
-                            interface.interval = interval;
-                        });
-                    },
-                    StateActions::Resize{height, width} => {
-                        state.mutate(|interface, _, _| {
-                            interface.term_size.height = height as usize;
-                            interface.term_size.width  = width as usize;
-                        });
-                    },
                     StateActions::Update() => {},
                     StateActions::Render() => render_queued = false,
                 };

@@ -1,23 +1,4 @@
 use crate::ui::utils::ui_text_util::fit_text_to_term;
-use color_eyre::Result;
-
-#[derive(Debug)]
-#[derive(Clone, Copy)]
-#[derive(PartialEq, Eq)]
-pub struct TermSize {
-    pub width: usize,
-    pub height: usize,
-}
-
-impl TermSize {
-    pub fn new() -> Result<TermSize> {
-        let (columns, rows) = crossterm::terminal::size()?;
-        Ok(TermSize{
-            width: columns as usize,
-            height: rows as usize,
-        })
-    }
-}
 
 #[derive(Debug)]
 #[derive(Clone, Copy)]

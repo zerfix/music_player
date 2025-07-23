@@ -1,8 +1,9 @@
+use crate::globals::terminal_state::GlobalUiState;
 use crate::tasks::listener_playback::PlaybackActions;
 use crate::tasks::listener_state::StateActions;
+use crate::tasks::listener_updater::UpdateActions;
 use crate::types::types_library_entry::TrackFile;
 use crate::types::types_msg_channels::MsgChannels;
-use crate::ui::utils::ui_loading_icon_util::LOADING_ICONS_LEN;
 use crate::CONFIG;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
@@ -10,11 +11,6 @@ use rayon::Scope;
 use rayon::ThreadPoolBuilder;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::thread;
-use std::thread::sleep;
-use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
 
@@ -50,8 +46,6 @@ const EXTENSIONS: [&str; 26] = [
     "mpp",
     "spx",
 ];
-
-static UPDATE_LOADING_INDICATOR: AtomicBool = AtomicBool::new(true);
 //-////////////////////////////////////////////////////////////////////////////
 //
 //-////////////////////////////////////////////////////////////////////////////
@@ -82,6 +76,9 @@ fn scan_directory(scope: &Scope, dir: PathBuf, tx: MsgChannels) {
                     let tx_playback = tx.playback.clone();
                     scope.spawn(move |_| match TrackFile::new(&path) {
                         Ok(track) => {
+                            if track.album_title.map(|s| s.starts_with("Beautiful")).unwrap_or(false) {
+                                info!("{:?}", &track);
+                            }
                             tx_state
                                 .send((Instant::now(), StateActions::ScanAddSong { track: Box::new(track) }))
                                 .unwrap();
@@ -104,27 +101,11 @@ fn scan_directory(scope: &Scope, dir: PathBuf, tx: MsgChannels) {
 fn scanner_loop(tx: &MsgChannels) -> Result<()> {
     let dirs = &CONFIG.get().ok_or_eyre("Config not initialized")?.media_dirs;
 
-    tx.state.send((Instant::now(), StateActions::ScanIsScanning { is_scanning: true }))?;
+    GlobalUiState::update_scanning_state(true);
+    tx.update.send(UpdateActions::LoadingLibrary(true)).unwrap();
     info!("Starting scan of '{:?}'", dirs);
+
     let time = SystemTime::now();
-
-    let _ = {
-        let tx = tx.clone();
-        thread::spawn(move || {
-            info!("Starting disk read indicator");
-            let full_rotation_sec = 1.0 / 2.0;
-            let single_tick       = Duration::from_secs_f64(full_rotation_sec / LOADING_ICONS_LEN as f64);
-
-            let mut interval = 0;
-            while UPDATE_LOADING_INDICATOR.load(Ordering::Relaxed) {
-                sleep(single_tick);
-                interval += 1;
-                if interval >= LOADING_ICONS_LEN {interval = 0}
-                tx.state.send((Instant::now(), StateActions::ScanIndicatorRotate(interval))).unwrap();
-            }
-            info!("Stopping disk read indicator");
-        })
-    };
 
     ThreadPoolBuilder::new().build().unwrap().scope(|scope: &Scope| {
         for dir in dirs.iter() {
@@ -134,11 +115,10 @@ fn scanner_loop(tx: &MsgChannels) -> Result<()> {
     });
 
     info!("scan of all directories took: {:?}", SystemTime::now().duration_since(time)?);
-
-    tx.state.send((Instant::now(), StateActions::ScanIsScanning { is_scanning: false }))?;
+    GlobalUiState::update_scanning_state(false);
+    tx.update.send(UpdateActions::LoadingLibrary(false)).unwrap();
 
     info!("scan thread exit");
-    UPDATE_LOADING_INDICATOR.store(false, Ordering::Relaxed);
     Ok(())
 }
 //-////////////////////////////////////////////////////////////////////////////

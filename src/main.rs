@@ -13,6 +13,10 @@ mod enums {
 mod functions {
     pub mod functions_hash;
 }
+mod globals {
+    pub mod playback_state;
+    pub mod terminal_state;
+}
 mod state {
     pub mod state_app;
     pub mod state_interface;

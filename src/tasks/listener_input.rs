@@ -1,5 +1,6 @@
 use crate::enums::enum_input::InputGlobal;
 use crate::enums::enum_input::InputLocal;
+use crate::globals::terminal_state::GlobalUiState;
 use crate::tasks::listener_state::StateActions;
 use crate::types::types_msg_channels::MsgChannels;
 use color_eyre::Result;
@@ -38,41 +39,41 @@ fn input_loop(tx: &MsgChannels) -> Result<()> {
                     KeyCode::Char('a') => send_l(InputLocal::Down)?,
                     KeyCode::Char('s') => send_l(InputLocal::Left)?,
                     KeyCode::Char('d') => send_l(InputLocal::Right)?,
-                    
+
                     KeyCode::Char('x') => send_g(InputGlobal::Previous)?,
                     KeyCode::Char('c') => send_g(InputGlobal::PlayPause)?,
                     KeyCode::Char('v') => send_g(InputGlobal::Stop)?,
                     KeyCode::Char('b') => send_g(InputGlobal::Next)?,
-                    
+
                     KeyCode::Char('f') => send_g(InputGlobal::SkipBackward{sec: 10})?,
                     KeyCode::Char('F') => send_g(InputGlobal::SkipBackward{sec: 60})?,
                     KeyCode::Char('g') => send_g(InputGlobal::SkipForward{sec: 10})?,
                     KeyCode::Char('G') => send_g(InputGlobal::SkipForward{sec: 60})?,
-                    
+
                     KeyCode::Char('e') => send_l(InputLocal::Select)?,
                     // vim
                     KeyCode::Char('k') => send_l(InputLocal::Up)?,
                     KeyCode::Char('j') => send_l(InputLocal::Down)?,
                     KeyCode::Char('h') => send_l(InputLocal::Left)?,
                     KeyCode::Char('l') => send_l(InputLocal::Right)?,
-                    
+
                     KeyCode::Char('y') => send_g(InputGlobal::Previous)?,
                     KeyCode::Char('u') => send_g(InputGlobal::PlayPause)?,
                     KeyCode::Char('i') => send_g(InputGlobal::Stop)?,
                     KeyCode::Char('o') => send_g(InputGlobal::Next)?,
-                    
+
                     KeyCode::Char('n') => send_g(InputGlobal::SkipBackward{sec: 10})?,
                     KeyCode::Char('N') => send_g(InputGlobal::SkipBackward{sec: 60})?,
                     KeyCode::Char('m') => send_g(InputGlobal::SkipForward{sec: 10})?,
                     KeyCode::Char('M') => send_g(InputGlobal::SkipForward{sec: 60})?,
-                    
+
                     KeyCode::Enter     => send_l(InputLocal::Select)?,
                     // extra
                     KeyCode::Up        => send_l(InputLocal::Up)?,
                     KeyCode::Down      => send_l(InputLocal::Down)?,
                     KeyCode::Left      => send_l(InputLocal::Left)?,
                     KeyCode::Right     => send_l(InputLocal::Right)?,
-                    
+
                     KeyCode::Char(' ') => send_l(InputLocal::SelectAlt)?,
 
                     KeyCode::PageUp    => send_l(InputLocal::PgUp)?,
@@ -87,10 +88,10 @@ fn input_loop(tx: &MsgChannels) -> Result<()> {
                     KeyCode::Char('q') => tx.exit.send(Ok("".to_string()))?,
                     _ => (),
                 },
-                Event::Resize(columns, rows) => tx.state.send((
-                    Instant::now(),
-                    StateActions::Resize{height: rows, width: columns}
-                ))?,
+                Event::Resize(columns, rows) => {
+                    GlobalUiState::update_term_size(columns, rows);
+                    tx.state.send((Instant::now(), StateActions::Update()))?
+                },
                 _ => {},
             }
         }

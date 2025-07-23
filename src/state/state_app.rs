@@ -1,3 +1,5 @@
+use crate::globals::playback_state::GlobalPlayback;
+use crate::globals::terminal_state::GlobalUiState;
 use crate::state::state_interface::StateInterface;
 use crate::state::state_library::StateLibrary;
 use crate::state::state_playlist::StatePlaylist;
@@ -43,14 +45,18 @@ impl AppState {
     pub fn render_state(&mut self) -> Option<(RenderDataCommon, RenderDataView)> {
         self.has_changed = false;
 
+        let term = GlobalUiState::read();
+        let playback = GlobalPlayback::read();
+
+
         let common = RenderDataCommon{
-            term_size  : self.interface.term_size,
-            interval   : self.interface.interval,
-            is_scanning: self.interface.is_scanning,
-            playlist   : self.playlist.clone(),
+            term,
+            playback,
+            playlist: self.playlist.clone(),
         };
 
-        let list_height = self.interface.term_size.height.saturating_sub(2);
+
+        let list_height = term.height.saturating_sub(2) as usize;
         let (left ,  left_selected) = self.library.list_filter.view(list_height);
         let (right, right_selected) = self.library.list_tracks.view(list_height);
 

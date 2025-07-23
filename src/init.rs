@@ -1,3 +1,4 @@
+use crate::globals::terminal_state::GlobalUiState;
 use crate::types::config::Config;
 use crate::CONFIG;
 use backtrace::Backtrace;
@@ -95,6 +96,12 @@ pub fn init() -> Result<bool> { // false means exit
 
             error!("Thread '{}' panicked at {}: {}\n{}", name, location, message, backtrace);
         }));
+    }
+
+    // -- Global state ----------------------------
+    {
+        let (columns, rows) = crossterm::terminal::size()?;
+        GlobalUiState::update_term_size(columns, rows);
     }
 
     Ok(true)

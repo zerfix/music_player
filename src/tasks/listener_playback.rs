@@ -1,5 +1,8 @@
+use crate::globals::playback_state::GlobalPlayback;
+use crate::globals::playback_state::PlaybackState;
 use crate::spawn_thread;
 use crate::tasks::listener_state::StateActions;
+use crate::tasks::listener_updater::UpdateActions;
 use crate::types::types_library_entry::TrackFile;
 use crate::types::types_msg_channels::MsgChannels;
 use awedio::backends::CpalBackend;
@@ -16,13 +19,9 @@ use crossbeam_channel::Receiver;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::path::Path;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
-
-static IS_PLAYING: AtomicBool = AtomicBool::new(false);
 
 //-//////////////////////////////////////////////////////////////////
 pub enum PlaybackActions {
@@ -70,11 +69,12 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                             continue;
                         },
                     };
-                    if let Err(err) = state.que(path) {
+                    if let Err(err) = state.que(*track, path) {
                         tx.state.send((Instant::now(), StateActions::PlaybackNextTrack{error: Some(err)}))?;
                         continue;
                     }
                     state.start(start_at)?;
+                    debug_assert!(GlobalPlayback::state() == PlaybackState::Playing);
                 },
                 PlaybackActions::Que { track } => {
                     let path = match tracks.get(&track.id_track) {
@@ -91,7 +91,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                             continue;
                         },
                     };
-                    if let Err(err) = state.que(path) {
+                    if let Err(err) = state.que(*track, path) {
                         tx.state.send((Instant::now(), StateActions::PlaybackNextTrack{error: Some(err)}))?;
                     }
                 },
@@ -101,12 +101,15 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                 },
                 PlaybackActions::Replay => {
                     state.start(None)?;
+                    debug_assert!(GlobalPlayback::state() == PlaybackState::Playing);
                 },
                 PlaybackActions::Pause => {
                     state.pause();
+                    debug_assert!(GlobalPlayback::state() == PlaybackState::Paused);
                 },
-                PlaybackActions::Resume(resume_at) => {
-                    state.resume(resume_at)?;
+                PlaybackActions::Resume(play_at) => {
+                    state.resume(play_at)?;
+                    debug_assert!(GlobalPlayback::state() == PlaybackState::Playing);
                 },
                 PlaybackActions::Next => {
                     state.next()?;
@@ -114,6 +117,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
                 },
                 PlaybackActions::Clear => {
                     state.clear();
+                    debug_assert!(GlobalPlayback::state() == PlaybackState::Stopped);
                 },
             },
         }
@@ -123,7 +127,7 @@ pub fn playback_loop(rx: Receiver<PlaybackActions>, tx: &MsgChannels) -> Result<
 struct PlaybackManager {
     channels  : MsgChannels,
     playback  : Option<Playback>,
-    que       : VecDeque<MemorySound>,
+    que       : VecDeque<(TrackFile, MemorySound)>,
 }
 struct Playback {
     pub manager   : Manager,
@@ -141,19 +145,21 @@ impl PlaybackManager {
     }
 
     pub fn stop(&mut self) {
-        IS_PLAYING.store(false, Ordering::Relaxed);
         self.playback = None;
     }
 
     pub fn clear(&mut self) {
         self.stop();
         self.que.clear();
+        GlobalPlayback::stop_playback();
     }
 
-    pub fn que(&mut self, path: &Path) -> Result<()> {
+    pub fn que(&mut self, track: TrackFile, path: &Path) -> Result<()> {
         info!("queuing track {:?}", path);
+        GlobalPlayback::set_loading(Some(track.id_track), &self.channels);
         let sound = open_file(path)?.into_memory_sound()?;
-        self.que.push_back(sound);
+        GlobalPlayback::set_loading(None, &self.channels);
+        self.que.push_back((track, sound));
         Ok(())
     }
 
@@ -166,7 +172,7 @@ impl PlaybackManager {
             return Ok(());
         }
         self.stop();
-        if let Some(sound) = self.que.front() {
+        if let Some((track, sound)) = self.que.front() {
             let (    sound, notifier  ) = sound.clone().with_completion_notifier();
             let (mut sound, controller) = sound.controllable();
 
@@ -178,14 +184,15 @@ impl PlaybackManager {
             // Witch causes CPU usage and makes app show up in mixer.
             let (mut manager, backend) = awedio::start().context("Starting audio output")?;
             manager.play(Box::new(sound));
-            IS_PLAYING.store(true, Ordering::Relaxed);
+            GlobalPlayback::start_playback(track.id_track, start_at.unwrap_or_default(), track.duration);
 
+            let track_id = track.id_track;
             spawn_thread!(self.channels.clone(), "play-callback", move |tx: MsgChannels| {
                 let res = notifier.recv()
                     .context("Awaiting track playback completed callback")
                     .note("This error is expected when playback is intentionally stopped.");
                 match res {
-                    Err(err) => match IS_PLAYING.load(Ordering::Relaxed) {
+                    Err(err) => match GlobalPlayback::state() == PlaybackState::Playing && GlobalPlayback::current_track() == track_id  {
                         true  => error!("{:?}", err),
                         false => info!("No longer listening for end of track. Track has been stopped."),
                     },
@@ -198,7 +205,7 @@ impl PlaybackManager {
                 backend,
                 controller
             });
-            self.channels.state.send((Instant::now(), StateActions::PlaybackPlay()))?;
+            self.channels.update.send(UpdateActions::Playback(true)).unwrap();
         }
         Ok(())
     }
@@ -210,13 +217,14 @@ impl PlaybackManager {
     }
 
     pub fn pause(&mut self) {
+        GlobalPlayback::pause_playback();
         self.stop();
-        self.channels.state.send((Instant::now(), StateActions::PlaybackPause())).unwrap();
+        self.channels.update.send(UpdateActions::Playback(false)).unwrap();
     }
 
     pub fn resume(&mut self, resume_at: Duration) -> Result<()> {
         self.start(Some(resume_at))?;
-        self.channels.state.send((Instant::now(), StateActions::PlaybackPlay())).unwrap();
+        self.channels.update.send(UpdateActions::Playback(true)).unwrap();
         Ok(())
     }
 }
