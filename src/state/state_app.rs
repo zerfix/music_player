@@ -45,8 +45,8 @@ impl AppState {
     pub fn render_state(&mut self) -> Option<(RenderDataCommon, RenderDataView)> {
         self.has_changed = false;
 
-        let term = GlobalUiState::read();
-        let playback = GlobalPlayback::read();
+        let term     = GlobalUiState::snapshot();
+        let playback = GlobalPlayback::snapshot();
 
 
         let common = RenderDataCommon{

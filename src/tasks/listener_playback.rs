@@ -192,7 +192,7 @@ impl PlaybackManager {
                     .context("Awaiting track playback completed callback")
                     .note("This error is expected when playback is intentionally stopped.");
                 match res {
-                    Err(err) => match GlobalPlayback::state() == PlaybackState::Playing && GlobalPlayback::current_track() == track_id  {
+                    Err(err) => match GlobalPlayback::state() == PlaybackState::Playing && GlobalPlayback::playing() == track_id  {
                         true  => error!("{:?}", err),
                         false => info!("No longer listening for end of track. Track has been stopped."),
                     },

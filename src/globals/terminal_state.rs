@@ -15,9 +15,10 @@ static PROGRESS_WIDTH  : AtomicUsize = AtomicUsize::new(0);
 static LOADING_INTERVAL: AtomicU8    = AtomicU8   ::new(0);
 //-////////////////////////////////////////////////////////////////////////////
 /// Contains information for UI rendering
+pub struct GlobalUiState {}
 #[derive(Debug)]
 #[derive(Clone, Copy)]
-pub struct GlobalUiState {
+pub struct GlobalUiStateSnapshot {
     pub width : u16,
     pub height: u16,
     pub is_scanning: bool,
@@ -28,16 +29,7 @@ pub struct GlobalUiState {
 //
 //-////////////////////////////////////////////////////////////////////////////
 impl GlobalUiState {
-    pub fn read() -> GlobalUiState {
-        GlobalUiState {
-            width           : TERM_WIDTH .load(Ordering::Relaxed),
-            height          : TERM_HEIGHT.load(Ordering::Relaxed),
-            is_scanning     : SCANNING_LIBRARY.load(Ordering::Relaxed),
-            progress_width  : PROGRESS_WIDTH.load(Ordering::Relaxed),
-            loading_rotation: LOADING_INTERVAL.load(Ordering::Relaxed),
-        }
-    }
-
+    // -- Store -------------------------------------------
     pub fn update_term_size(width: u16, height: u16) {
         TERM_WIDTH .store(width , Ordering::Relaxed);
         TERM_HEIGHT.store(height, Ordering::Relaxed);
@@ -59,6 +51,26 @@ impl GlobalUiState {
         }
     }
 
+    // -- Read --------------------------------------------
+    pub fn width()            -> u16   {TERM_WIDTH .load(Ordering::Relaxed)}
+    pub fn height()           -> u16   {TERM_HEIGHT.load(Ordering::Relaxed)}
+    pub fn is_scanning()      -> bool  {SCANNING_LIBRARY.load(Ordering::Relaxed)}
+    pub fn progress_width()   -> usize {PROGRESS_WIDTH.load(Ordering::Relaxed)}
+    pub fn loading_rotation() -> u8    {LOADING_INTERVAL.load(Ordering::Relaxed)}
+    pub fn loading_icon()     -> char  {loading_icon(GlobalUiState::loading_rotation())}
+
+    pub fn snapshot() -> GlobalUiStateSnapshot {
+        GlobalUiStateSnapshot {
+            width           : TERM_WIDTH .load(Ordering::Relaxed),
+            height          : TERM_HEIGHT.load(Ordering::Relaxed),
+            is_scanning     : SCANNING_LIBRARY.load(Ordering::Relaxed),
+            progress_width  : PROGRESS_WIDTH.load(Ordering::Relaxed),
+            loading_rotation: LOADING_INTERVAL.load(Ordering::Relaxed),
+        }
+    }
+}
+
+impl GlobalUiStateSnapshot {
     pub fn loading_icon(&self) -> char {
         loading_icon(self.loading_rotation)
     }

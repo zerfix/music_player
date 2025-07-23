@@ -1,5 +1,5 @@
-use crate::globals::playback_state::GlobalPlayback;
-use crate::globals::terminal_state::GlobalUiState;
+use crate::globals::playback_state::GlobalPlaybackSnapshot;
+use crate::globals::terminal_state::GlobalUiStateSnapshot;
 use crate::state::state_playlist::StatePlaylist;
 use crate::types::types_tui::TermState;
 use crate::types::types_msg_channels::MsgChannels;
@@ -37,8 +37,8 @@ pub enum RenderActions {
 
 #[derive(Debug)]
 pub struct RenderDataCommon {
-    pub term: GlobalUiState,
-    pub playback: GlobalPlayback,
+    pub term: GlobalUiStateSnapshot,
+    pub playback: GlobalPlaybackSnapshot,
     pub playlist: StatePlaylist,
 }
 

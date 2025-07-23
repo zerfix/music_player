@@ -70,9 +70,7 @@ fn clock_loop(run: bool, tx: &MsgChannels) {
                             break;
                         }
 
-                        let playback = GlobalPlayback::read();
-
-                        let elapsed  = playback.elapsed().as_secs_f64();
+                        let elapsed  = GlobalPlayback::elapsed().as_secs_f64();
                         let interval = 1.0;
                         let next     = interval - (elapsed % interval);
 
@@ -102,12 +100,9 @@ fn progress_loop(run: bool, tx: &MsgChannels) {
                             break;
                         }
 
-                        let playback = GlobalPlayback::read();
-
-                        let terminal = GlobalUiState::read();
-                        let duration = playback.duration.as_secs_f64();
-                        let elapsed  = playback.elapsed().as_secs_f64();
-                        let width    = terminal.progress_width as f64;
+                        let duration = GlobalPlayback::duration().as_secs_f64();
+                        let elapsed  = GlobalPlayback::elapsed().as_secs_f64();
+                        let width    = GlobalUiState::progress_width() as f64;
 
                         let interval = duration / width;
                         let next     = interval - (elapsed % interval);

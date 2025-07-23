@@ -23,14 +23,16 @@ static PLAYBACK_SINCE_SEC   : AtomicU64  = AtomicU64 ::new(0);
 static PLAYBACK_ELAPSED_SEC : AtomicU64  = AtomicU64 ::new(0);
 static PLAYBACK_LENGTH_SEC  : AtomicU64  = AtomicU64 ::new(0);
 //-////////////////////////////////////////////////////////////////////////////
+pub struct GlobalPlayback {}
 #[derive(Debug)]
-pub struct GlobalPlayback {
-    playing: Option<u64>,
-    loading: Option<u64>,
-    since  : SystemTime,
-    elapsed: Duration,
+pub struct GlobalPlaybackSnapshot {
+    pub playing : Option<u64>,
+    pub loading : Option<u64>,
+    pub since   : SystemTime,
+    pub elapsed : Duration,
     pub state   : PlaybackState,
     pub duration: Duration,
+    pub progress: f64,
 }
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -50,12 +52,12 @@ impl GlobalPlayback {
     }
 
     pub fn pause_playback() {
-        let playback = GlobalPlayback::read();
-        if playback.state != PlaybackState::Playing {
+        let state = GlobalPlayback::state();
+        if state != PlaybackState::Playing {
             return;
         }
 
-        let elapsed = playback.elapsed + playback.since.elapsed().unwrap();
+        let elapsed = GlobalPlayback::elapsed();
         PLAYBACK_ELAPSED_SEC .store(elapsed.as_secs(), Ordering::Relaxed);
         PLAYBACK_ELAPSED_NANO.store(elapsed.subsec_nanos(), Ordering::Relaxed);
         PLAYBACK_STATE.store(PlaybackState::Paused as u8, Ordering::Relaxed);
@@ -89,49 +91,48 @@ impl GlobalPlayback {
     }
 
     // -- Read --------------------------------------------
-    pub fn read() -> GlobalPlayback {
-        let state = PlaybackState::get_state();
-        GlobalPlayback{
+    pub fn state()   -> PlaybackState {PlaybackState::get_state()}
+    pub fn playing() -> u64           {PLAYBACK_PLAYING_ID.load(Ordering::Relaxed)}
+    pub fn loading() -> Option<u64>   {match PLAYBACK_IS_LOADING.load(Ordering::Relaxed) {
+        true  => Some(PLAYBACK_LOADING_ID.load(Ordering::Relaxed)),
+        false => None,
+    }}
+    pub fn since() -> SystemTime {UNIX_EPOCH + Duration::new(
+        PLAYBACK_SINCE_SEC .load(Ordering::Relaxed),
+        PLAYBACK_SINCE_NANO.load(Ordering::Relaxed),
+    )}
+    pub fn elapsed() -> Duration {
+        let since = GlobalPlayback::since();
+        let elapsed = Duration::new(
+            PLAYBACK_ELAPSED_SEC .load(Ordering::Relaxed),
+            PLAYBACK_ELAPSED_NANO.load(Ordering::Relaxed),
+        );
+        elapsed + since.elapsed().unwrap()
+    }
+    pub fn duration() -> Duration {Duration::new(
+        PLAYBACK_LENGTH_SEC .load(Ordering::Relaxed),
+        PLAYBACK_LENGTH_NANO.load(Ordering::Relaxed),
+    )}
+    pub fn progress() -> f64 {
+        GlobalPlayback::elapsed().as_secs_f64() / GlobalPlayback::duration().as_secs_f64()
+    }
+
+    pub fn snapshot() -> GlobalPlaybackSnapshot {
+        let state = GlobalPlayback::state();
+        GlobalPlaybackSnapshot{
             state,
             playing: match state {
                 PlaybackState::Stopped => None,
                 PlaybackState::Loading |
                 PlaybackState::Paused  |
-                PlaybackState::Playing => Some(PLAYBACK_PLAYING_ID.load(Ordering::Relaxed)),
+                PlaybackState::Playing => Some(GlobalPlayback::playing()),
             },
-            loading: match PLAYBACK_IS_LOADING.load(Ordering::Relaxed) {
-                true  => Some(PLAYBACK_LOADING_ID.load(Ordering::Relaxed)),
-                false => None,
-            },
-            since: UNIX_EPOCH + Duration::new(
-                PLAYBACK_SINCE_SEC .load(Ordering::Relaxed),
-                PLAYBACK_SINCE_NANO.load(Ordering::Relaxed),
-            ),
-            elapsed: Duration::new(
-                PLAYBACK_ELAPSED_SEC .load(Ordering::Relaxed),
-                PLAYBACK_ELAPSED_NANO.load(Ordering::Relaxed),
-            ),
-            duration: Duration::new(
-                PLAYBACK_LENGTH_SEC .load(Ordering::Relaxed),
-                PLAYBACK_LENGTH_NANO.load(Ordering::Relaxed),
-            ),
+            loading : GlobalPlayback::loading(),
+            since   : GlobalPlayback::since(),
+            elapsed : GlobalPlayback::elapsed(),
+            duration: GlobalPlayback::duration(),
+            progress: GlobalPlayback::progress(),
         }
-    }
-
-    pub fn state() -> PlaybackState {
-        PlaybackState::get_state()
-    }
-
-    pub fn current_track() -> u64 {
-        PLAYBACK_PLAYING_ID.load(Ordering::Relaxed)
-    }
-
-    pub fn elapsed(&self) -> Duration {
-        self.elapsed + self.since.elapsed().unwrap()
-    }
-
-    pub fn progress(&self) -> f64 {
-        self.elapsed().as_secs_f64() / self.duration.as_secs_f64()
     }
 }
 //-////////////////////////////////////////////////////////////////////////////
@@ -166,7 +167,7 @@ impl PlaybackState {
     pub fn icon(&self) -> char {
         match self {
             PlaybackState::Stopped => '⏹',
-            PlaybackState::Loading => GlobalUiState::read().loading_icon(),
+            PlaybackState::Loading => GlobalUiState::loading_icon(),
             PlaybackState::Paused  => '⏸',
             PlaybackState::Playing => '⏵',
         }

@@ -40,8 +40,8 @@ pub fn render_playback_status_widget(
         },
         PlaybackState::Paused |
         PlaybackState::Playing => {
-            let elapsed  = playback.elapsed();
-            let progress = playback.progress();
+            let elapsed  = playback.elapsed;
+            let progress = playback.progress;
             let duration = playback.duration;
 
             // track duration total
