@@ -10,6 +10,8 @@ pkgs.mkShell {
     openssl
     rustc
     cargo
+    rust-analyzer
+    lldb
   ];
   shellHook = ''
     export PKG_CONFIG_PATH=${pkgs.alsa-lib}/lib/pkgconfig
