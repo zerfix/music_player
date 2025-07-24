@@ -1,6 +1,8 @@
+use crate::config::Config;
+use crate::environment::Environment;
 use crate::globals::terminal_state::GlobalUiState;
-use crate::types::config::Config;
 use crate::CONFIG;
+use crate::ENVIRONMENT;
 use backtrace::Backtrace;
 use color_backtrace::BacktracePrinter;
 use color_eyre::eyre::Context;
@@ -24,6 +26,11 @@ pub fn init() -> Result<bool> { // false means exit
         .config_dir()
         .join("config.toml");
 
+    // -- Environment -----------------------
+    {
+        ENVIRONMENT.set(Environment::init()).unwrap();
+    }
+    
     // -- Config ----------------------------
     {
         if !config_path.exists() {

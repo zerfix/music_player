@@ -1,9 +1,8 @@
 use crate::globals::playback_state::PlaybackState;
 use crate::globals::terminal_state::GlobalUiState;
 use crate::tasks::listener_tui::RenderDataCommon;
-use crate::types::types_tui::Format;
+use crate::types::types_style::Color;
 use crate::types::types_tui::TermState;
-use crate::types::types_tui::Color;
 use crate::ui::utils::ui_time_util::render_duration;
 use std::iter::repeat;
 
@@ -15,7 +14,7 @@ pub fn render_playback_status_widget(
     common: &RenderDataCommon
 ) {
     let width = common.term.width as usize;
-    output.format(Format{fg: Color::Black, bg: Color::Blue, bold: true});
+    output.style(Color::Black, common.theme.border, false);
 
     if width < 20 {
         output.frame.extend(repeat(' ').take(width));

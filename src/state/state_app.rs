@@ -6,6 +6,7 @@ use crate::state::state_playlist::StatePlaylist;
 use crate::tasks::listener_tui::RenderDataCommon;
 use crate::tasks::listener_tui::RenderDataView;
 use crate::ui::views::view_library::RenderDataViewLibrary;
+use crate::CONFIG;
 
 //-////////////////////////////////////////////////////////////////////////////
 //
@@ -50,6 +51,7 @@ impl AppState {
 
 
         let common = RenderDataCommon{
+            theme: CONFIG.get().unwrap().theme,
             term,
             playback,
             playlist: self.playlist.clone(),

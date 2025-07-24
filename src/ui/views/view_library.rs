@@ -1,4 +1,3 @@
-use crate::globals::playback_state::PlaybackState;
 use crate::state::state_library::LibraryColumn;
 use crate::state::state_library::LibrarySelectMode;
 use crate::state::state_library::LibraryTab;
@@ -6,14 +5,14 @@ use crate::state::state_playlist::PlaylistState;
 use crate::tasks::listener_tui::RenderDataCommon;
 use crate::types::types_library_entry::LibraryFilterEntry;
 use crate::types::types_library_entry::TrackFile;
-use crate::types::types_tui::Color;
-use crate::types::types_tui::Format;
 use crate::types::types_tui::TermState;
+use crate::types::types_style::Color;
+use crate::types::types_style::Theme;
 use crate::ui::utils::ui_time_util::render_duration;
-use arrayvec::ArrayString;
 use std::fmt::Write;
 use std::iter::repeat;
 use std::str::FromStr;
+use arrayvec::ArrayString;
 use unicode_width::UnicodeWidthStr;
 
 //-////////////////////////////////////////////////////////////////////////////
@@ -42,9 +41,9 @@ pub fn draw_library_view(
 
     render_header(
         output,
+        common,
         width,
         filter_width,
-        common,
         view.tab_selected,
         view.track_select_mode,
     );
@@ -55,39 +54,38 @@ pub fn draw_library_view(
         match view.left.get(i).copied() {
             Some(filter) => render_filter_row(
                 output,
+                common,
                 filter_width,
                 filter,
-                common.playlist.get_playback_state_for_filter(filter),
-                common.playback.state,
                 view.column_selected == LibraryColumn::Filter,
                 i == view.left_selected,
             ),
             None => {
-                output.format(Format { fg: Color::Default, bg: Color::Default, bold: false });
+                output.style_empty();
                 output.frame.extend(repeat(' ').take(filter_width));
             },
         };
 
-        output.format(Format{fg: Color::Blue, bg: Color::Default, bold: false});
+        output.style(common.theme.border, Color::Default, false);
         output.frame.push('┃');
 
         match view.right.get(i).map(|e| (e.is_album_padding, e)) {
             Some((true, track)) => render_album_row(
                 output,
+                common,
                 track_width,
                 *track,
             ),
             Some((false, track)) => render_track_row(
                 output,
+                common,
                 track_width,
                 *track,
-                common.playlist.get_playback_state_for_track(track.id_track),
-                common.playback.state,
                 view.column_selected == LibraryColumn::Tracks,
                 i == view.right_selected,
             ),
             None => {
-                output.format(Format { fg: Color::Default, bg: Color::Default, bold: false });
+                output.style_empty();
                 output.frame.extend(repeat(' ').take(track_width));
             },
         }
@@ -98,13 +96,13 @@ pub fn draw_library_view(
 //-////////////////////////////////////////////////////////////////////////////
 fn render_header(
     output: &mut TermState,
+    common: &RenderDataCommon,
     width: usize,
     filter_width: usize,
-    common: &RenderDataCommon,
     library_tab: LibraryTab,
     select_mode: LibrarySelectMode,
 ) {
-    output.format(Format{fg: Color::Black, bg: Color::Blue, bold: true});
+    output.style(Color::Black, common.theme.border, true);
 
     // loading icon
     {
@@ -134,27 +132,32 @@ fn render_header(
 //-////////////////////////////////////////////////////////////////////////////
 fn render_filter_row(
     output: &mut TermState,
+    common: &RenderDataCommon,
     width: usize,
     entry: LibraryFilterEntry,
-    playlist_state: PlaylistState,
-    playback_state: PlaybackState,
     is_active: bool,
     is_selected: bool,
 ) {
-    let format = match (is_selected, is_active) {
-        (false, _    ) => Format{fg: Color::Default, bg: Color::Default, bold: false},
-        (true , false) => Format{fg: Color::Black  , bg: Color::Red    , bold: false},
-        (true , true ) => Format{fg: Color::Black  , bg: Color::Cyan   , bold: false},
+    let playlist_state = common.playlist.get_playback_state_for_filter(entry);
+    let playback_state = common.playback.state;
+
+    let theme = Theme {
+        color_base: common.theme.selectable_normal,
+        color_selected: match is_active {
+            true  => common.theme.selectable_highlight_active,
+            false => common.theme.selectable_highlight_inactive,
+        },
+        is_selected: is_selected,
+        bold: false,
     };
 
     // playback indicator
     {
-        let format = match (is_selected, playlist_state) {
-            (true , _                     ) => format,
-            (false, PlaylistState::None   ) => Format{fg: Color::Default, bg: Color::Default, bold: true},
-            (false, PlaylistState::Played ) => Format{fg: Color::Red    , bg: Color::Default, bold: true},
-            (false, PlaylistState::Playing) => Format{fg: Color::Yellow , bg: Color::Default, bold: true},
-            (false, PlaylistState::Queued ) => Format{fg: Color::Green  , bg: Color::Default, bold: true},
+        let theme = match playlist_state {
+            PlaylistState::None    => theme.recolor(Color::Default),
+            PlaylistState::Played  => theme.recolor(common.theme.icon_color_done),
+            PlaylistState::Playing => theme.recolor(common.theme.icon_color_playing),
+            PlaylistState::Queued  => theme.recolor(common.theme.icon_color_queued),
         };
         let icon = match playlist_state {
             PlaylistState::None    => ' ',
@@ -162,7 +165,7 @@ fn render_filter_row(
             PlaylistState::Playing => playback_state.icon(),
             PlaylistState::Queued  => '+',
         };
-        output.format(format);
+        output.style_theme(theme);
         output.frame.push(icon);
     }
 
@@ -171,7 +174,7 @@ fn render_filter_row(
         let name = entry.name();
         let width = width.saturating_sub(3);
 
-        output.format(format);
+        output.style_theme(theme);
         output.frame.push(' ');
         output.fit_str(None, &name, width);
         output.frame.push(' ');
@@ -182,6 +185,7 @@ fn render_filter_row(
 //-////////////////////////////////////////////////////////////////////////////
 fn render_album_row(
     output: &mut TermState,
+    common: &RenderDataCommon,
     width: usize,
     track: TrackFile,
 ) {
@@ -189,17 +193,18 @@ fn render_album_row(
     let len_year    = 4;
     let len_dynamic = width.saturating_sub(len_padding + len_year);
 
+    output.style_empty();
     output.frame.push(' ');
 
     // album name
     let len_line = {
-        let format = Format{fg: Color::Default, bg: Color::Default, bold: true};
+        let color = common.theme.selectable_normal;
         let album_name = track.album_title.unwrap_or(ArrayString::from_str("<missing>").unwrap());
         let len_album = match len_dynamic.saturating_sub(album_name.width()) {
             ..2 => len_dynamic,
             2.. => album_name.width(),
         };
-        output.format(format);
+        output.style(color, Color::Default, true);
         output.fit_str(None, &album_name, len_album);
 
         len_dynamic.saturating_sub(album_name.width())
@@ -211,7 +216,7 @@ fn render_album_row(
         1   => output.frame.push(' '),
         2.. => {
             output.frame.push(' ');
-            output.format(Format{fg: Color::Cyan, bg: Color::Default, bold: true});
+            output.style(common.theme.album_divider, Color::Default, true);
             output.frame.extend(repeat('━').take(len_line-1));
         }
     }
@@ -220,8 +225,7 @@ fn render_album_row(
 
     // year
     {
-        let format = Format{fg: Color::Default, bg: Color::Default, bold: true};
-        output.format(format);
+        output.style(common.theme.album_text, Color::Default, true);
         match track.year {
             Some(year) => output.frame.push_str(output.num_buf.format(year)),
             None       => output.frame.extend(repeat('-').take(4))
@@ -233,38 +237,38 @@ fn render_album_row(
 
 fn render_track_row(
     output: &mut TermState,
+    common: &RenderDataCommon,
     width: usize,
     track: TrackFile,
-    playlist_state: PlaylistState,
-    playback_state: PlaybackState,
     is_active: bool,
     is_selected: bool,
 ) {
+    let playlist_state = common.playlist.get_playback_state_for_track(track.id_track);
+    let playback_state = common.playback.state;
+
     let len_padding  = 5;
     let len_playback = 1;
     let len_track    = 2;
     let len_duration = 5 + 3 * (track.duration.as_secs() > 3600) as usize;
     let len_dynamic  = width.saturating_sub(len_padding + len_playback + len_track + len_duration);
 
-    let format_white = match (is_selected, is_active) {
-        (false, _    ) |
-        (true , false) => Format{fg: Color::Default, bg: Color::Default, bold: false},
-        (true , true ) => Format{fg: Color::Black  , bg: Color::Cyan   , bold: false},
-    };
-    let format_yellow = match (is_selected, is_active) {
-        (false, _    ) |
-        (true , false) => Format{fg: Color::Yellow, bg: Color::Default, bold: false},
-        (true , true ) => Format{fg: Color::Black , bg: Color::Cyan   , bold: false},
+    let theme = Theme {
+        color_base: common.theme.selectable_normal,
+        color_selected: match is_active {
+            true  => common.theme.selectable_highlight_active,
+            false => Color::Default,
+        },
+        is_selected: is_selected && is_active,
+        bold: false,
     };
 
     // playback indicator
     {
-        let format = match (is_active && is_selected, playlist_state) {
-            (true , _                     ) => format_white,
-            (false, PlaylistState::None   ) => Format{fg: Color::Default, bg: Color::Default, bold: true},
-            (false, PlaylistState::Played ) => Format{fg: Color::Red    , bg: Color::Default, bold: true},
-            (false, PlaylistState::Playing) => Format{fg: Color::Yellow , bg: Color::Default, bold: true},
-            (false, PlaylistState::Queued ) => Format{fg: Color::Green  , bg: Color::Default, bold: true},
+        let theme = match playlist_state {
+            PlaylistState::None    => theme.recolor(Color::Default),
+            PlaylistState::Played  => theme.recolor(common.theme.icon_color_done),
+            PlaylistState::Playing => theme.recolor(common.theme.icon_color_playing),
+            PlaylistState::Queued  => theme.recolor(common.theme.icon_color_queued),
         };
         let icon = match playlist_state {
             PlaylistState::None    => ' ',
@@ -272,7 +276,7 @@ fn render_track_row(
             PlaylistState::Playing => playback_state.icon(),
             PlaylistState::Queued  => '+',
         };
-        output.format(format);
+        output.style_theme(theme);
         output.frame.push(icon);
     }
 
@@ -280,7 +284,7 @@ fn render_track_row(
 
     // track number
     {
-        output.format(format_yellow);
+        output.style_theme(theme.recolor(common.theme.track_highlight));
         match track.track_number {
             None        => output.frame.extend(repeat('-').take(2)),
             Some(track) => {
@@ -300,7 +304,7 @@ fn render_track_row(
             0   => len_dynamic,
             1.. => track_name.width(),
         };
-        output.format(format_white);
+        output.style_theme(theme);
         output.fit_str(None, &track_name, len_track);
         len_dynamic.saturating_sub(track_name.width())
     };
@@ -311,11 +315,7 @@ fn render_track_row(
         (_  , false, _   ) |
         (_  , _    , None) => output.frame.extend(repeat(' ').take(len_artist)),
         (1.., true , Some(artist)) => {
-            let format = match is_selected {
-                true  => format_white,
-                false => Format{fg: Color::Gray, bg: Color::Default, bold: false},
-            };
-            output.format(format);
+            output.style_theme(theme.recolor(common.theme.track_artist_name));
             output.fit_str(Some(" - "), &artist, len_artist);
         },
     }
@@ -326,7 +326,7 @@ fn render_track_row(
     {
         output.text_buf.clear();
         render_duration(&mut output.text_buf, track.duration);
-        output.format(format_yellow);
+        output.style_theme(theme.recolor(common.theme.track_highlight));
         output.frame.push_str(&output.text_buf);
     }
 

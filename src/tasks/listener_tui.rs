@@ -1,3 +1,4 @@
+use crate::config::conf_theme::ConfTheme;
 use crate::globals::playback_state::GlobalPlaybackSnapshot;
 use crate::globals::terminal_state::GlobalUiStateSnapshot;
 use crate::state::state_playlist::StatePlaylist;
@@ -37,6 +38,7 @@ pub enum RenderActions {
 
 #[derive(Debug)]
 pub struct RenderDataCommon {
+    pub theme: ConfTheme,
     pub term: GlobalUiStateSnapshot,
     pub playback: GlobalPlaybackSnapshot,
     pub playlist: StatePlaylist,

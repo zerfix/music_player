@@ -5,6 +5,8 @@
 extern crate tracing;
 
 //-////////////////////////////////////////////////////////////////////////////
+mod config;
+mod environment;
 mod init;
 mod run;
 mod enums {
@@ -35,6 +37,12 @@ mod tasks {
 mod traits {
     pub mod trait_listable;
 }
+mod types {
+    pub mod types_style;
+    pub mod types_library_entry;
+    pub mod types_msg_channels;
+    pub mod types_tui;
+}
 mod ui {
     pub mod models {
         pub mod model_component_list_state;
@@ -52,19 +60,15 @@ mod ui {
         pub mod widget_playback_status;
     }
 }
-mod types {
-    pub mod config;
-    pub mod types_library_entry;
-    pub mod types_msg_channels;
-    pub mod types_tui;
-}
 //-////////////////////////////////////////////////////////////////////////////
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[static_init::dynamic]
-static CONFIG: std::sync::OnceLock<crate::types::config::Config> = std::sync::OnceLock::new();
+static CONFIG: std::sync::OnceLock<crate::config::Config> = std::sync::OnceLock::new();
+#[static_init::dynamic]
+static ENVIRONMENT: std::sync::OnceLock<crate::environment::Environment> = std::sync::OnceLock::new();
 
 //-////////////////////////////////////////////////////////////////////////////
 //
